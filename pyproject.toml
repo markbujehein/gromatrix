@@ -16,6 +16,7 @@ test = ["pytest>=7"]
 
 [project.scripts]
 gmxprep-gmx = "gmxprep.gmx_prep:main"
+gmxprep-status = "gmxprep.status:main"
 gmxprep-fetch = "gmxprep.fetch:main"
 gmxprep-fix = "gmxprep.fix:main"
 gmxprep-extract = "gmxprep.extract:main"
