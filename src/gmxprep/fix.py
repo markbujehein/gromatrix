@@ -40,7 +40,7 @@ import numpy as np
 from openmm.unit import angstrom
 
 from . import altlocs
-from .pdbio import ION_RES, WATER_RES, read_pdb, write_pdb
+from .pdbio import ION_RES, WATER_RES, read_pdb, residues, write_pdb
 from .structure import POLYMER_RES, read_metadata, read_raw_atoms
 
 # Crystallisation / cryo additives that are almost never biologically relevant.
@@ -90,13 +90,25 @@ def _is_h(atom) -> bool:
     return el in ("H", "D")
 
 
-def _author_chain_ids(fixer, meta: dict) -> bool:
-    """OpenMM's PDBx reader uses label_asym_id as the chain ID. If so, rename
-    every chain to its author ID. Returns True if a remap happened."""
+def openmm_uses_label_ids(meta: dict) -> bool:
+    """Mirror OpenMM's PDBx reader (openmm/app/pdbxfile.py). It uses auth_asym_id
+    for chain IDs unless there are strictly more distinct label_asym_ids than
+    auth_asym_ids, as with ligands and waters that have their own label chains."""
     l2a = meta.get("label2auth") or {}
-    chains = list(fixer.topology.chains())
-    if not l2a or len(chains) != len(l2a) or any(c.id not in l2a for c in chains):
+    return bool(l2a) and len(l2a) > len(set(l2a.values()))
+
+
+def _author_chain_ids(fixer, meta: dict) -> bool:
+    """Rename chains to author IDs when OpenMM read label IDs. Returns True if remapped.
+    The decision mirrors OpenMM's own rule. Guessing from chain names can swap
+    chains when label and author IDs overlap (e.g. label A -> auth B, label B -> auth A)."""
+    if not openmm_uses_label_ids(meta):
         return False
+    l2a = meta["label2auth"]
+    chains = list(fixer.topology.chains())
+    unknown = [c.id for c in chains if c.id not in l2a]
+    if unknown:
+        raise ValueError(f"OpenMM chain IDs {unknown} are not label_asym_ids of this file")
     for c in chains:
         c.id = l2a[c.id]
     return True
@@ -193,7 +205,11 @@ def fix_one(path: Path, out_dir: Path, args) -> dict:
     meta = read_metadata(path)
     raw_atoms, raw_stats, alt_groups = read_raw_atoms(path, args.altloc_rmsd)
 
-    fixer = PDBFixer(filename=str(path))
+    # PDBFixer sees only the primary conformer, so missing atoms and loops are built
+    # on the conformer we keep (OpenMM would otherwise keep the first-listed altloc).
+    tmpdir = tempfile.TemporaryDirectory()
+    src = altlocs.reduce_to_primary(path, alt_groups, Path(tmpdir.name)) if alt_groups else path
+    fixer = PDBFixer(filename=str(src))
     fixer.findMissingResidues()  # before the remap: PDBFixer matches SEQRES by its own chain IDs
     remapped = _author_chain_ids(fixer, meta)
     gaps = _gaps(fixer, args.max_loop)
@@ -211,6 +227,7 @@ def fix_one(path: Path, out_dir: Path, args) -> dict:
     except TypeError:  # older PDBFixer without the seed argument
         fixer.addMissingAtoms()
 
+    tmpdir.cleanup()
     modeller = Modeller(fixer.topology, fixer.positions)
     delete, removed = _select_deletions(modeller, args)
     modeller.delete(delete)
@@ -224,15 +241,25 @@ def fix_one(path: Path, out_dir: Path, args) -> dict:
     atoms = read_pdb(Path(tmp.name))
     Path(tmp.name).unlink()
 
-    # Re-attach crystallographic B-factors and *primary-conformer* coordinates
-    # (OpenMM keeps whichever altloc it met first); PDBFixer-built atoms get occupancy 0.
-    ref = {(a.chain, a.resseq, a.icode, a.name): a for a in raw_atoms}
+    # Re-attach crystallographic B-factors; PDBFixer-built atoms get occupancy 0.
+    # The key includes the residue name, and positions whose numbering became
+    # ambiguous (PDBFixer numbers built loop residues backwards from the next
+    # residue, which can collide with inconsistent author numbering) are not restored.
+    ref = {(a.chain, a.resseq, a.icode, a.resname, a.name): a for a in raw_atoms}
+    seen_res, dup = set(), set()
+    for res in residues(atoms):
+        k = (res[0].chain, res[0].resseq, res[0].icode)
+        (dup if k in seen_res else seen_res).add(k)
+    if dup:
+        warnings.append(
+            f"residue numbering collides after loop building at {sorted(dup)[:5]}; "
+            "coordinates there are PDBFixer's, check the loop"
+        )
     restored, built = [], 0
     for a in atoms:
-        r = ref.get((a.chain, a.resseq, a.icode, a.name))
+        r = None if (a.chain, a.resseq, a.icode) in dup else ref.get((a.chain, a.resseq, a.icode, a.resname, a.name))
         if r is None:
             built += 1
-        if r is None:
             restored.append(a.__class__(**{**a.__dict__, "b": 0.0, "occ": 0.0}))
         else:
             restored.append(a.__class__(**{**a.__dict__, "x": r.x, "y": r.y, "z": r.z, "b": r.b, "occ": r.occ}))

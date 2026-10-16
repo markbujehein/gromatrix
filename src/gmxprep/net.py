@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import gzip
 import hashlib
+import http.client
 import json
+import os
 import time
 import urllib.error
 import urllib.request
@@ -14,6 +16,30 @@ from pathlib import Path
 
 USER_AGENT = "gromatrix/0.1 (+https://github.com/markbujehein/gromatrix)"
 RETRY_STATUS = {429, 500, 502, 503, 504}
+MAX_WAIT = 120.0  # s; never let a server's Retry-After stall a batch for long
+
+
+def _retry_after(value: str | None, default: float) -> float:
+    """Retry-After is either delta-seconds or an HTTP-date (RFC 9110)."""
+    if not value:
+        return default
+    try:
+        wait = float(value)
+    except ValueError:
+        from email.utils import parsedate_to_datetime
+
+        try:
+            wait = (parsedate_to_datetime(value) - datetime.now(timezone.utc)).total_seconds()
+        except (TypeError, ValueError):
+            wait = default
+    return min(max(wait, 0.0), MAX_WAIT)
+
+
+def atomic_write(path: Path, text: str) -> None:
+    """Write via a temp file + rename, so an interrupted write never corrupts `path`."""
+    tmp = Path(path).with_suffix(Path(path).suffix + ".tmp")
+    tmp.write_text(text)
+    os.replace(tmp, path)
 
 
 class HTTPError(RuntimeError):
@@ -39,8 +65,9 @@ def get(
         except urllib.error.HTTPError as e:
             if e.code not in RETRY_STATUS or attempt == retries:
                 raise HTTPError(url, e.code, e.reason) from e
-            wait = float(e.headers.get("Retry-After") or delay)
-        except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+            wait = _retry_after(e.headers.get("Retry-After"), delay)
+        # http.client.HTTPException covers IncompleteRead (body truncated mid-transfer).
+        except (urllib.error.URLError, http.client.HTTPException, TimeoutError, ConnectionError) as e:
             if attempt == retries:
                 raise HTTPError(url, None, str(e)) from e
             wait = delay
@@ -77,15 +104,25 @@ class Cache:
         e, f = self.entries.get(name), self.dir / name
         return bool(e) and f.exists() and sha256(f) == e["sha256"]
 
-    def fetch(self, name: str, url: str, gunzip: bool = False, extra: dict | None = None) -> tuple[Path, str]:
-        """-> (path, 'cached'|'downloaded'|'repaired')."""
+    def fetch(
+        self, name: str, url: str, gunzip: bool = False, extra: dict | None = None, force: bool = False
+    ) -> tuple[Path, str]:
+        """-> (path, 'cached'|'downloaded'|'repaired'|'updated'). With `force`, a valid
+        file is refetched, and replaced only once the new copy has arrived intact."""
         f = self.dir / name
-        if self.valid(name):
+        if self.valid(name) and not force:
             return f, "cached"
-        status = "repaired" if f.exists() or name in self.entries else "downloaded"
+        status = (
+            "updated"
+            if force and self.valid(name)
+            else ("repaired" if f.exists() or name in self.entries else "downloaded")
+        )
         blob = get(url)
         if gunzip:
-            blob = gzip.decompress(blob)
+            try:
+                blob = gzip.decompress(blob)
+            except (OSError, EOFError) as e:  # BadGzipFile is an OSError; truncated stream -> EOFError
+                raise HTTPError(url, None, f"corrupt gzip payload: {e}") from e
         tmp = f.with_suffix(f.suffix + ".part")
         tmp.write_bytes(blob)
         tmp.replace(f)  # atomic: never leave a half-written structure behind
@@ -100,4 +137,4 @@ class Cache:
         return f, status
 
     def save(self) -> None:
-        self.path.write_text(json.dumps(self.entries, indent=1, sort_keys=True))
+        atomic_write(self.path, json.dumps(self.entries, indent=1, sort_keys=True))

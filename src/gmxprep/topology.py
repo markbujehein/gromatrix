@@ -51,24 +51,72 @@ def split_params(text: str) -> tuple[dict[str, list[str]], str]:
     return params, "\n".join(mol_lines).strip() + "\n"
 
 
+# Number of leading atom-type columns that identify a parameter in each section.
+TYPE_COLUMNS = {
+    "atomtypes": 1,
+    "bondtypes": 2,
+    "constrainttypes": 2,
+    "pairtypes": 2,
+    "angletypes": 3,
+    "dihedraltypes": 4,
+    "nonbond_params": 2,
+    "cmaptypes": 5,
+}
+
+
+def _canonical(section: str, line: str) -> str:
+    """The same parameter written in either atom order compares equal."""
+    f = line.split()
+    n = TYPE_COLUMNS[section]
+    if section == "dihedraltypes" and len(f) > 2 and f[2] in ("1", "2", "4", "9"):
+        n = 2
+    if section == "atomtypes":
+        return " ".join(f)
+    types = f[:n]
+    return " ".join([*min(types, types[::-1]), *f[n:]])
+
+
+def _param_key(section: str, line: str) -> tuple:
+    """Identity of a parameter line: its atom types (direction-independent) plus the
+    function type. Dihedral types 9 (CHARMM multi-term) share one key per atom
+    quadruple, so the whole set of terms is compared as a unit."""
+    f = line.split()
+    n = TYPE_COLUMNS[section]
+    if section == "dihedraltypes" and len(f) > 2 and f[2] in ("1", "2", "4", "9"):
+        n = 2  # two-type (X-wildcard style) dihedral line
+    types = tuple(f[:n])
+    if section != "atomtypes":
+        types = min(types, types[::-1])
+    func = f[n] if len(f) > n and section != "atomtypes" else ""
+    return (types, func)
+
+
 def merge_params(blocks: list[dict[str, list[str]]]) -> str:
-    """Merge type sections from several ligands. Exact duplicates are dropped;
-    an atomtype redefined with different parameters is an error, because it
-    would silently change another molecule's physics."""
+    """Merge type sections from several ligands. Exact duplicates are dropped. A
+    parameter that two ligands define differently raises: that covers atomtypes,
+    bonded types and the full term set of a type-9 dihedral. Otherwise one ligand
+    would silently change another molecule's physics (grompp would accept the
+    concatenated type-9 terms as one multi-term dihedral)."""
     merged: dict[str, list[str]] = {s: [] for s in PARAM_SECTIONS}
-    seen: dict[str, set[str]] = {s: set() for s in PARAM_SECTIONS}
-    atomtype_def: dict[str, str] = {}
-    for block in blocks:
+    owner: dict[tuple, tuple[int, frozenset]] = {}
+    for bi, block in enumerate(blocks):
+        per_key: dict[tuple, dict[str, str]] = {}  # key -> {canonical line: original line}
         for section, lines in block.items():
             for line in lines:
-                if section == "atomtypes":
-                    name = line.split()[0]
-                    if name in atomtype_def and atomtype_def[name] != line:
-                        raise TopologyError(f"conflicting atomtype '{name}':\n  {atomtype_def[name]}\n  {line}")
-                    atomtype_def[name] = line
-                if line not in seen[section]:
-                    seen[section].add(line)
-                    merged[section].append(line)
+                per_key.setdefault((section, *_param_key(section, line)), {})[_canonical(section, line)] = line
+        for key, canon in per_key.items():
+            lines = frozenset(canon)
+            prev = owner.get(key)
+            if prev is None:
+                owner[key] = (bi, lines)
+                merged[key[0]].extend(canon.values())
+            elif prev[1] != lines:
+                raise TopologyError(
+                    f"ligands define [ {key[0]} ] {' '.join(key[1])} differently:\n  "
+                    + "\n  ".join(sorted(prev[1]))
+                    + "\nvs\n  "
+                    + "\n  ".join(sorted(lines))
+                )
     out = []
     for section in PARAM_SECTIONS:
         if merged[section]:

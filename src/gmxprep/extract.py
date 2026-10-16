@@ -442,21 +442,28 @@ def slice_matrix(
         for L in plan["letters"]:
             env = [with_altloc(r, groups, L) for r in enzyme_poly + enzyme_het]
             ligs = [with_altloc(r, groups, L) for _, r in inst]
-            lead_L = with_altloc(lead, groups, L)
-            clash = clash_report(lead_L, env)
-            plan["branches"][L] = {"clash": clash}
-            if clash["min_dist"] is not None and clash["min_dist"] < 1.5:
+            # Every instance that changes under letter L is checked, not just the lead copy.
+            checks = [(orig, new) for (_, orig), new in zip(inst, ligs) if new is not orig] or [(lead, ligs[0])]
+            reports = [clash_report(new, env + [x for x in ligs if x is not new]) for _, new in checks]
+            plan["branches"][L] = {"clash": min(reports, key=lambda r: (r["min_dist"] is None, r["min_dist"] or 0))}
+            if any(r["min_dist"] is not None and r["min_dist"] < 1.5 for r in reports):
                 plan["branches"][L]["skipped"] = "severe clash with environment (< 1.5 Å)"
                 continue
-            if clash["contacts"] == 0:
+            if any(r["contacts"] == 0 for r in reports):
                 # Some deposits store a second copy of the ligand, bound at another site,
                 # as an altloc of the same residue. That is not a conformer of this pose.
                 plan["branches"][L]["skipped"] = (
                     "pose does not touch this unit: an alternate copy bound elsewhere in the deposit, not a conformer"
                 )
                 continue
+            lead_L = ligs[[r for _, r in inst].index(lead)]
             files[f"target_{t}_alt{L}"] = write(f"target_{t}_alt{L}.pdb", [lead_L])
             files[f"complex_{t}_alt{L}"] = write(f"complex_{t}_alt{L}.pdb", env + ligs)
+        if not any(k.startswith(f"complex_{t}_alt") for k in files):
+            # Every branch was rejected: never drop the target from the matrix; use the primary pose.
+            plan["fallback"] = "all branches rejected; primary conformer used"
+            files[f"target_{t}"] = write(f"target_{t}.pdb", [lead])
+            files[f"complex_{t}"] = write(f"complex_{t}.pdb", enzyme_poly + enzyme_het + [r for _, r in inst])
     if tchains:
         tag = "".join(sorted(tchains))
         t_res = [r for r in poly if r.chain in tchains] + [
@@ -499,7 +506,9 @@ def extract_one(pdb: Path, out_root: Path, a) -> dict:
     for item in _scoped(a.expect, pid):
         name, _, n = item.partition(":")
         req[name.upper()] = max(req.get(name.upper(), 0), int(n or 1))
-    all_types = {r.resname for r in au if r.kind in ("ligand", "ion")}
+    # Soft coverage counts ligand types only: a stray crystallisation ion on one copy
+    # must not make a larger unit outrank a complete smaller one.
+    all_types = {r.resname for r in au if r.kind == "ligand"}
 
     # Candidates
     cands: list[Candidate] = []
@@ -561,6 +570,8 @@ def extract_one(pdb: Path, out_root: Path, a) -> dict:
     ]
     outdir = out_root / pid
     outdir.mkdir(parents=True, exist_ok=True)
+    for stale in [*outdir.glob("*.pdb"), outdir / "unit.json"]:  # never mix files from an earlier run
+        stale.unlink(missing_ok=True)
     chosen = next((c for c in ranked if c.id == a.unit), None) if a.unit else ranked[0]
     if chosen is None:
         raise ExtractionError(f"--unit {a.unit} not among candidates {[c.id for c in ranked]}")

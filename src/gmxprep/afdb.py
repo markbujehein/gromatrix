@@ -41,7 +41,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .net import Cache, HTTPError, get_json
+from .net import Cache, HTTPError, atomic_write, get_json
 from .pdbio import PROTEIN_RES, read_pdb, write_pdb
 
 AF_API = "https://alphafold.ebi.ac.uk/api/prediction/{acc}"
@@ -132,13 +132,17 @@ def tm_score(model: np.ndarray, ref: np.ndarray, l_norm: int) -> tuple[float, np
 
 
 def lddt_ca(model: np.ndarray, ref: np.ndarray, radius: float = 15.0) -> float:
+    """Superposition-free Calpha lDDT over the *reference* residues. Rows of `model`
+    that are NaN (reference residues the model lacks) count as not preserved, as in
+    the standard definition, so a fragment covering half the chain cannot score 1.0."""
     dr = np.linalg.norm(ref[:, None] - ref[None], axis=2)
     dm = np.linalg.norm(model[:, None] - model[None], axis=2)
     mask = (dr < radius) & ~np.eye(len(ref), dtype=bool)
     if not mask.any():
         return float("nan")
-    diff = np.abs(dr - dm)[mask]
-    return float(np.mean([(diff < t).mean() for t in (0.5, 1.0, 2.0, 4.0)]))
+    diff = np.abs(dr - dm)[mask]  # NaN wherever a residue is missing from the model
+    with np.errstate(invalid="ignore"):
+        return float(np.mean([(diff < t).mean() for t in (0.5, 1.0, 2.0, 4.0)]))
 
 
 # ------------------------------------------------------------------ data
@@ -185,7 +189,7 @@ def sifts_map(pid: str, cache_dir: Path) -> dict[str, str]:
         if e.status != 404:
             raise
         out = rcsb_map(pid)
-    f.write_text(json.dumps(out))
+    atomic_write(f, json.dumps(out))
     return out
 
 
@@ -215,7 +219,9 @@ def af_model(acc: str, cache: Cache, seq_exp: str):
         ca = chain_ca(read_pdb(path))
         model_ca = next(iter(ca.values()))
         seq = "".join(THREE2ONE.get(a.resname, "X") for a in model_ca)
-        n = len(align(seq_exp, seq))
+        # Rank by identical aligned residues: with free end gaps, the raw pair count
+        # rewards long unrelated sequences.
+        n = sum(seq_exp[i] == seq[j] for i, j in align(seq_exp, seq))
         if best is None or n > best[0]:
             best = (n, e, path, model_ca, seq)
     if best is None:
@@ -228,6 +234,10 @@ def compare_chain(chain: str, exp_ca: list, acc: str, cache: Cache, a, out_dir: 
     entry, model_path, model_ca, seq_af = af_model(acc, cache, seq_exp)
     pairs = align(seq_exp, seq_af)
     ident = sum(seq_exp[i] == seq_af[j] for i, j in pairs) / max(1, len(pairs))
+    full_ref = np.array([[x.x, x.y, x.z] for x in exp_ca])
+    full_mod = np.full_like(full_ref, np.nan)
+    for i, j in pairs:
+        full_mod[i] = (model_ca[j].x, model_ca[j].y, model_ca[j].z)
     ref = np.array([[exp_ca[i].x, exp_ca[i].y, exp_ca[i].z] for i, _ in pairs])
     mod = np.array([[model_ca[j].x, model_ca[j].y, model_ca[j].z] for _, j in pairs])
     plddt = np.array([model_ca[j].b for _, j in pairs])
@@ -245,7 +255,7 @@ def compare_chain(chain: str, exp_ca: list, acc: str, cache: Cache, a, out_dir: 
         "rmsd_all": round(rmsd_after_fit(mod, ref), 2),
         "rmsd_core": round(rmsd_after_fit(mod[core], ref[core]), 2) if core.sum() >= 3 else None,
         "tm_score": round(tm, 3),
-        "lddt_ca": round(lddt_ca(mod, ref), 3),
+        "lddt_ca": round(lddt_ca(full_mod, full_ref), 3),
     }
     flags = []
     if ident < 0.9:
@@ -314,7 +324,13 @@ def main(argv: list[str] | None = None) -> int:
             origin = {c: o.split("/")[0] for c, o in json.loads(uj.read_text()).get("chain_origin", {}).items()}
         manual = _scoped_map(a.uniprot, pid)
         chains: dict[str, list] = {}
+        # Only score structures that passed step D: skip *.failed.pdb and anything relax.json marks not ok.
+        relax_status = {}
+        if (u / "relax.json").exists():
+            relax_status = {k: v.get("status") for k, v in json.loads((u / "relax.json").read_text())["files"].items()}
         for f in sorted(u.glob("*.pdb")):
+            if f.name.endswith(".failed.pdb") or relax_status.get(f.name, "ok") not in ("ok", "skipped"):
+                continue
             if any(fnmatch.fnmatch(f.name, pat) for pat in a.files):
                 for ch, ca in chain_ca(read_pdb(f)).items():
                     chains.setdefault(ch, ca)
