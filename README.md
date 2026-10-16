@@ -1,350 +1,368 @@
 # gromatrix
 
-[![CI](https://github.com/markbujehein/gromatrix/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/markbujehein/gromatrix/actions/workflows/ci.yml)
-[![coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/markbujehein/gromatrix/badges/coverage.json)](https://github.com/markbujehein/gromatrix/actions/workflows/ci.yml)
-[![release](https://img.shields.io/github/v/release/markbujehein/gromatrix?sort=semver)](https://github.com/markbujehein/gromatrix/releases/latest)
-[![python](https://img.shields.io/badge/python-3.10%20%7C%203.12%20%7C%203.13-blue)](pixi.toml)
-[![pixi](https://img.shields.io/badge/env-pixi-yellow)](https://pixi.sh)
-[![ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+<p>
+  <a href="https://github.com/markbujehein/gromatrix/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/markbujehein/gromatrix/actions/workflows/ci.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/markbujehein/gromatrix/tree/badges"><img alt="coverage" src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/markbujehein/gromatrix/badges/coverage.json"></a>
+  <a href="CHANGELOG.md"><img alt="version" src="https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmarkbujehein%2Fgromatrix%2Fmain%2Fpyproject.toml&query=%24.project.version&label=version&color=orange"></a>
+  <a href="pixi.toml"><img alt="python" src="https://img.shields.io/badge/python-3.10%20%7C%203.12%20%7C%203.13-blue"></a>
+  <a href="https://pixi.sh"><img alt="pixi" src="https://img.shields.io/badge/env-pixi-yellow"></a>
+  <a href="https://github.com/astral-sh/ruff"><img alt="ruff" src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json"></a>
+</p>
 
-> **Status: alpha (0.x).** The CLI, file formats and skills may still change between minor
-> versions. Steps A–E are tested on an 82-structure benchmark. Steps F–H are covered by unit tests
-> against simulated GROMACS output but have not yet run against real GROMACS; confirm on your own
-> system before relying on them.
+**From PDB IDs to a comparable set of GROMACS simulations, with one forcefield and with every
+step checked.**
 
-**gromatrix** is a general-purpose, target-agnostic pipeline that turns experimental or docked
-structures into a GROMACS simulation **matrix**: every receptor alone, every target alone, and every
-receptor + target complex. Targets can be small molecules, cofactors or other proteins. It works
-from any PDB/mmCIF input: single chains, hetero-oligomers, multi-copy asymmetric units, and
-symmetry-generated biological assemblies. One forcefield (AMBER or CHARMM family) is locked per batch
-and enforced at every step, so all systems in a comparison are built with identical physics.
+gromatrix builds and runs a molecular-dynamics **simulation matrix**: every receptor alone, every
+target alone, and every receptor + target complex. Targets can be drugs, cofactors or other
+proteins. It works from any PDB/mmCIF entry or docked pose: single chains, hetero-oligomers,
+multi-copy asymmetric units, and symmetry-generated assemblies. Eight steps (A–H) take a structure
+from download to trajectory analysis. Each step is one command with a one-line JSON result, and a
+set of Claude agent skills can drive them.
 
-It covers the whole path from a PDB ID to MD results: preparation (steps A–F), running the MD
-protocol with checkpoint resume locally or on Slurm (G), and trajectory analysis with a
-comparison table across the matrix (H). Each step is one command; `gmxprep-pipeline` chains them
-all from one manifest.
+It is also an **open demonstration of AI-assisted scientific software engineering**: a human
+domain lead directing Claude as the primary developer. How that split worked, including where
+human judgement overruled the AI, is the [second section](#the-human-pilot-and-the-ai-engine).
 
-Nothing in the algorithms refers to a particular protein, chain, ligand or residue number. Every
-decision is driven by the deposition metadata, geometry and the user's declared targets.
-
-It ships with a **Claude agent toolkit**: six skills that let Claude drive the whole pipeline.
-They install into any Claude client **without cloning this repository** (see below).
-
-## Install the Claude skills (no clone needed)
-
-Every [GitHub Release](https://github.com/markbujehein/gromatrix/releases/latest) carries one
-ready-to-upload `.zip` per skill, plus `SHA256SUMS`:
-
-| Download | Role |
-|---|---|
-| [`gromatrix.zip`](https://github.com/markbujehein/gromatrix/releases/latest/download/gromatrix.zip) | Orchestrator: decides the forcefield and targets, chains the stages, writes the final report. **Install this one first.** |
-| [`gromatrix-structure-prep.zip`](https://github.com/markbujehein/gromatrix/releases/latest/download/gromatrix-structure-prep.zip) | Steps A–C: fetch, clean, sub-unit extraction |
-| [`gromatrix-validate.zip`](https://github.com/markbujehein/gromatrix/releases/latest/download/gromatrix-validate.zip) | Steps D–E: OpenMM integrity relaxation, AlphaFold comparison |
-| [`gromatrix-gmx-builder.zip`](https://github.com/markbujehein/gromatrix/releases/latest/download/gromatrix-gmx-builder.zip) | Step F: GROMACS topologies, boxes, ions, smoke test |
-| [`gromatrix-execution.zip`](https://github.com/markbujehein/gromatrix/releases/latest/download/gromatrix-execution.zip) | Step G: EM → NVT → NPT → production; resume, gates, background or Slurm |
-| [`gromatrix-analysis.zip`](https://github.com/markbujehein/gromatrix/releases/latest/download/gromatrix-analysis.zip) | Step H: PBC removal, RMSD, RMSF, Rg, H-bond persistence, plots, matrix table |
-
-Install all six. The orchestrator hands off to the others by name.
-
-**claude.ai (web, desktop, Pro / Team / Enterprise).** Go to *Customize → Skills → Upload a
-skill* and upload each `.zip` as downloaded. Don't unzip them; each archive already contains
-the `<skill-name>/SKILL.md` folder layout that claude.ai expects.
-
-**Claude Code (CLI).** Unzip into your personal skills directory, which makes them available in
-every project:
-
-```bash
-cd ~/.claude/skills   # create it first if needed: mkdir -p ~/.claude/skills
-for s in gromatrix gromatrix-structure-prep gromatrix-validate gromatrix-gmx-builder \
-         gromatrix-execution gromatrix-analysis; do
-  curl -fsSLO "https://github.com/markbujehein/gromatrix/releases/latest/download/$s.zip"
-  unzip -oq "$s.zip" && rm "$s.zip"
-done
-```
-
-Optionally verify a download against the release's `SHA256SUMS` with `sha256sum -c SHA256SUMS`.
-The archives are built reproducibly.
-
-**The skills drive the `gromatrix` command-line tools, so install the package where the commands
-will run.** That needs no clone either:
-
-```bash
-conda create -n gromatrix -c conda-forge python=3.12 openmm pdbfixer rdkit biopython scipy pyyaml
-conda activate gromatrix
-pip install "gromatrix @ git+https://github.com/markbujehein/gromatrix@v0.2.0"
-gmxprep-status --batch-dir test_batch   # prints {"ok": false, ...}: the commands are installed
-```
-
-What runs where:
-* **Steps A–E** need network access to RCSB / PDBe / AlphaFold DB.
-* **Step F** additionally needs GROMACS, acpype or CGenFF (conda-forge: `gromacs acpype openbabel`).
-* **Step G** needs GROMACS on the machine that runs MD (ideally with a GPU), or a Slurm cluster.
-* **Step H** needs GROMACS plus `mdanalysis matplotlib-base` (conda-forge), or
-  `pip install "gromatrix[analysis] @ git+…"`.
-
-In practice, Claude Code on your workstation or cluster runs the whole pipeline. On claude.ai the
-skills still guide planning, manifests and interpretation of results, and run commands wherever
-code execution can install the package.
-
-### Why six skills instead of one
-
-A single large prompt for eight pipeline stages wastes context and blurs responsibilities. The
-toolkit follows **progressive disclosure**:
-* **Small entry point.** The orchestrator is a ~80-line entry point that makes the decisions that
-  are hard to undo and routes to a stage.
-* **Narrow stage skills.** Each stage skill documents only its own commands; a test enforces it.
-  Detailed flags and troubleshooting live in its `references/` and are read only when needed.
-* **Stateless hand-off.** The skills hand off through the batch directory, not through
-  conversation memory. Every stage starts with `gmxprep-status`, which reports progress and names
-  the `next` skill and command. A fresh session, or a different agent, resumes any batch at the
-  right stage.
-
-## Problems it solves, for any structure
-
-| Problem in real deposits | How gromatrix handles it (step) |
-|---|---|
-| The asymmetric unit is not the biological unit; copies differ in which ligands they hold | Enumerates every deposited assembly *and* every stoichiometric, interface-connected unit of the AU; ranks them by completeness against the declared targets (C) |
-| Ligands/cofactors must stay with the subunit they bind | Distance-based HET→chain assignment (most heavy-atom contacts within a cutoff) (C) |
-| mmCIF `label_asym_id` vs author chain IDs (OpenMM/PDBFixer use label IDs) | Every chain mapped back to author IDs before anything else (B) |
-| Alternate conformers | Primary by occupancy; symmetry-aware RMSD decides whether conformers are distinct; distinct poses branch the matrix; coordinates are never averaged (B, C) |
-| Missing atoms, short loops, long disordered gaps | Heavy atoms and loops ≤ `--max-loop` built; longer gaps left open and split with TER so no tool bonds across them (B) |
-| Crystallisation additives, hydrogens, waters | Stripped by configurable policy; H rebuilt later by the forcefield's own tools (B, F) |
-| Is the structure physically sane before MD? | Two-stage restrained OpenMM minimisation with explosion/distortion/chain-break/clash/pocket-collapse gates (D) |
-| Is the experimental unit consistent with the predicted fold? | AlphaFold DB comparison by sequence alignment: RMSD (all/confident core), TM-score, Cα-lDDT (E) |
-| Mixing forcefields across a comparison | Batch-wide forcefield lock checked by every command and stamped on every artefact (F) |
-| Ligand topologies differing between apo/holo/complex systems | One parameter set per ligand per batch (acpype/GAFF2 or CGenFF); every pose mapped onto it (F) |
-| Long runs die: walltime, node failure, Ctrl-C | Per-phase resume from `.cpt`; `-maxh` derived from the Slurm walltime; SIGTERM forwarded so mdrun checkpoints; stale downstream output never chained (G) |
-| A blown-up equilibration silently feeds production | EM convergence and zero-LINCS gates on NVT/NPT before production starts (G) |
-| PBC artefacts and group-number scripts in analysis | `trjconv -pbc mol -center` then `-fit`, groups selected by name; target atoms taken from the build record, not guessed (H) |
-| Comparing many systems by eye | One `analysis_summary.csv` row per system, with drift/instability flags (H) |
-
-## Pipeline
+> **Status: alpha (0.x).** Steps A–E are exercised on an 82-structure benchmark (partial run,
+> see [Validation](#validation)). Steps F–H are covered by tests against simulated GROMACS
+> output but **have not yet run against real GROMACS**. The CLI and file formats may still
+> change between minor versions.
 
 | Step | Command | What it does |
 |---|---|---|
-| lock | `gmxprep-gmx lock` | fix the forcefield for the batch (`amber`, `amber99sb-ildn-tip4pew`, `amber14sb`, `amber19sb`, `charmm`) |
+| lock | `gmxprep-gmx lock` | fixes one forcefield for the whole batch (AMBER or CHARMM family) |
 | A | `gmxprep-fetch` | RCSB download by ID, full-text or UniProt search; sha256-verified cache |
-| B | `gmxprep-fix` | PDBFixer clean-up, author chain IDs, gap policy, altloc analysis |
-| C | `gmxprep-extract` | choose the sub-unit and slice `enzyme` / `target_<T>` / `complex_<T>` |
-| D | `gmxprep-relax` | OpenMM integrity relaxation with failure labels |
-| E | `gmxprep-afcompare` | AlphaFold DB comparison per protein chain |
-| F | `gmxprep-gmx plan / build / verify / smoke` | topologies, boxes, solvent, ions, `em.tpr`, `run.sh`, smoke test |
-| G | `gmxprep-run` | EM → NVT → NPT → production with resume and gates; foreground, `--background` or `--slurm` |
-| H | `gmxprep-analyze` | PBC removal + fit, Cα/target RMSD, RMSF, Rg, H-bond persistence, plots, `analysis_summary.csv` |
-| A–H | `gmxprep-pipeline` | runs the steps above in order from one manifest; `--dry-run`, `--skip-*`, `--from/--to`, fail-fast |
+| B | `gmxprep-fix` | PDBFixer repair, author chain IDs, gap policy, alternate-conformer analysis |
+| C | `gmxprep-extract` | picks the biological unit that holds the targets; slices enzyme / target / complex |
+| D | `gmxprep-relax` | restrained OpenMM minimisation with failure labels (explosion, pocket collapse, …) |
+| E | `gmxprep-afcompare` | per-chain comparison with AlphaFold DB: RMSD, TM-score, Cα-lDDT |
+| F | `gmxprep-gmx build / verify / smoke` | topologies, ligand parameters, box, solvent, ions, gated `em.tpr` |
+| G | `gmxprep-run` | EM → NVT → NPT → production with checkpoint resume; local, background or Slurm |
+| H | `gmxprep-analyze` | PBC removal, RMSD, RMSF, Rg, H-bond persistence, plots, matrix summary |
+| A–H | `gmxprep-pipeline` | all of the above from one manifest, with dry run and fail-fast |
 
-Every command takes `--batch-dir` (the pipeline takes `--manifest`), prints **one JSON line**
-(`{"ok": ..., ...}`; `gmxprep-run` and `gmxprep-pipeline` stream progress lines before it) and exits
-non-zero on failure. Verbose tool output goes to log files. `gmxprep-status --batch-dir B` summarises a batch
-and names the next step. Full flags for each step are in the `references/cli.md` of the matching
-agent skill (below).
+## The human pilot and the AI engine
 
-## Agent skill reference
+| Human (maintainer) | AI (Claude, via Claude Code) |
+|---|---|
+| **Domain architect and biophysics lead.** Defined the matrix concept and the forcefield rules (no mixing within a batch; acpype for AMBER, CGenFF for CHARMM), and named the hard structural cases. | **Primary developer.** Wrote all of `src/` (~6,700 lines), the CI workflows and the release tooling. |
+| **Pipeline strategist.** Set the step order and the scope of each step, and chose the PXR/CAR benchmark. | **Test author.** Wrote 82 tests: an offline end-to-end run on 1XVP, a fake `gmx` that reproduces GROMACS checkpoint and `-maxh` behaviour, and a synthetic trajectory with known answers. |
+| **Quality assurer.** Required independent review agents, pixi CI and honest reporting of what is untested; holds the version at 0.x; owns merges and tags. | **Skill integrator.** Built six agent skills and the `gmxprep-status` hand-off; ran the benchmark and two rounds of review agents. |
 
-Inside a clone, Claude Code discovers the skills in `.claude/skills/` automatically. Outside one,
-install the release zips (above).
+**The agentic control plane.** An agent running an eight-step pipeline typically fails by
+forgetting state, or by drowning in documentation for steps it isn't running. gromatrix is built
+so neither can happen:
 
-| Skill | Scope | Commands it documents |
-|---|---|---|
-| `gromatrix` | Orchestrator: settles forcefield, targets, protonation and compute with the user; chains the stages or runs the pipeline; final report | `gmxprep-status`, `gmxprep-gmx lock`, `gmxprep-pipeline` |
-| `gromatrix-structure-prep` | Steps A–C: fetch, fix, sub-unit extraction, altlocs | `gmxprep-fetch`, `gmxprep-fix`, `gmxprep-extract` |
-| `gromatrix-validate` | Steps D–E: OpenMM integrity relaxation, AlphaFold comparison | `gmxprep-relax`, `gmxprep-afcompare` |
-| `gromatrix-gmx-builder` | Step F: manifest, GROMACS build, verify, smoke test | `gmxprep-gmx` |
-| `gromatrix-execution` | Step G: running, resuming and submitting the MD protocol | `gmxprep-run` |
-| `gromatrix-analysis` | Step H: trajectory metrics, flags, plots, interpretation | `gmxprep-analyze` |
+```mermaid
+flowchart LR
+    U(["user"]) --> O["gromatrix<br/>orchestrator skill<br/><i>decisions + order</i>"]
+    O -->|"gmxprep-status"| S{{"status:<br/>steps A–H + next skill/command"}}
+    S --> P["structure-prep<br/>A–C"] & V["validate<br/>D–E"] & B["gmx-builder<br/>F"] & X["execution<br/>G"] & Y["analysis<br/>H"]
+    P & V & B & X & Y -->|"run gmxprep-* ;<br/>read 1 JSON line"| D[("batch directory<br/>*.json state files")]
+    D -->|"read back"| S
+```
 
-`gmxprep-status` reads only the artefacts the steps write:
-* the forcefield lock;
-* `fixed/*.meta.json` and `units/*/unit.json`;
-* `relaxed/*/relax.json` and `af/*.json`;
-* `systems/*/system.json`, `systems/*/run.json` and `systems/*/analysis/analysis.json`.
+- **State lives on disk.** Every step writes JSON state files into the batch directory.
+  `gmxprep-status` reads only those files and names the `next` skill and command, so any session
+  can resume any batch.
+- **Progressive disclosure.** The orchestrator holds only the hard-to-undo decisions. Each stage
+  skill documents only its own commands, with details in `references/`. A test fails if a stage
+  skill runs another stage's commands.
+- **Gates live in code, not prompts.** The forcefield lock, parameter caches and physical
+  checks are enforced by the commands, so an agent can't argue its way past them.
 
-From these it reports a `steps` verdict for A–H (`done` / `partial` / `pending` / `n/a`) and the
-`next` skill and command. That keeps the hand-off between skills deterministic.
+**Where human domain judgement changed the design** (full account, with commits:
+[docs/ai-collaboration.md](docs/ai-collaboration.md)):
+
+1. **"Randomly picking one conformer is biophysically unsound."**
+   - The first step-C code simply kept conformer A of the 1XVP ligand CITCO. The human rejected
+     that, and asked whether averaged coordinates could be used instead.
+   - The investigation found that A and B are a ring flip, at 0.38 Å after symmetry matching.
+     Averaging would have collapsed aromatic bonds to 0.70 Å.
+   - The result is a rule: **never average; branch the matrix only for genuinely distinct
+     poses.**
+2. **The 1XVP problem.**
+   - Before any extraction code existed, the human specified the trap: the drug is bound in only
+     one of two heterodimers, so naively taking "the first dimer" loses the target.
+   - The result is **completeness-first unit selection**, which the benchmark later hardened
+     against mislabelled ligands.
+3. **"Mixing forcefields within a comparison matrix is strictly forbidden."**
+   - The result is a batch-wide **forcefield lock**, stamped on every artefact and re-checked by
+     `verify`, with one parameter template per ligand per batch.
+
+Not every catch was human: the AI's own review agents found, for example, that the OpenMM chain-ID
+remap could swap chains in polymer-only mmCIFs. Not every human correction was biophysics either:
+the human also caught over-fitting to the 1XVP benchmark, a package-naming inconsistency, and a
+premature 1.0 version.
+
+## System architecture
+
+Data flow through steps A–H. Solid arrows carry files. The forcefield lock is read by every
+family-dependent step.
+
+```mermaid
+flowchart TB
+    IN(["PDB IDs · text query · UniProt<br/>or your own docked PDBs"]) --> A
+    LOCK[("forcefield.lock.json")]
+
+    subgraph PREP["Preparation · PDBFixer, SciPy, NumPy"]
+        A["<b>A · gmxprep-fetch</b><br/>RCSB search + download"]
+        B["<b>B · gmxprep-fix</b><br/>repair · author chain IDs · altloc analysis"]
+        C["<b>C · gmxprep-extract</b><br/>unit ranking · HET→chain KD-tree · slicing"]
+        A -->|"raw/ID.cif · cache.json (sha256)"| B
+        B -->|"fixed/ID.pdb · ID.meta.json"| C
+    end
+
+    subgraph VAL["Validation · OpenMM, AlphaFold DB (optional)"]
+        D["<b>D · gmxprep-relax</b><br/>2-stage restrained minimisation + gates"]
+        E["<b>E · gmxprep-afcompare</b><br/>RMSD · TM-score · Cα-lDDT"]
+        D -->|"relaxed/ID/*.pdb · relax.json"| E
+    end
+
+    C -->|"units/ID/ enzyme.pdb · target_T.pdb ·<br/>complex_T[_altL].pdb · unit.json"| D
+    C -.->|"skip D–E"| MAN
+    E -->|"af/ID.json · af_report.csv"| MAN["manifest.yaml<br/>(written, or generated by gmxprep-pipeline)"]
+
+    subgraph GMX["GROMACS engine · pdb2gmx, acpype / CGenFF, mdrun"]
+        F["<b>F · gmxprep-gmx</b><br/>build · verify · smoke"]
+        G["<b>G · gmxprep-run</b><br/>EM → NVT → NPT → MD"]
+        F -->|"systems/id/ topol.top · *.itp · solv_ions.gro ·<br/>index.ndx · mdp/*.mdp · em.tpr · system.json"| G
+    end
+
+    MAN --> F
+    G -->|"*.tpr · *.cpt · md.xtc · md.edr · run.json"| H["<b>H · gmxprep-analyze</b><br/>trjconv PBC + fit · MDAnalysis"]
+    H -->|"analysis/analysis.json · rmsd/rmsf/rg/hbonds.png"| OUT(["analysis_summary.csv<br/>one row per system"])
+
+    LOCK -.->|"family"| D
+    LOCK -.->|"identity"| F
+```
+
+The engineering reference covers the step contracts, code layout, batch-directory layout and
+per-step design decisions: [docs/architecture.md](docs/architecture.md).
+
+## Biophysical rules and edge cases
+
+**Stoichiometric unit selection** (`extract.py`):
+- **Candidates.** Every deposited assembly (with its symmetry operators) and every stoichiometric
+  sub-unit of the asymmetric unit are candidates. A stoichiometric sub-unit has entity copy
+  numbers divided by their GCD, and its chains must be connected by real interfaces.
+- **Ligand assignment.** Each ligand or cofactor is assigned to the chain it physically contacts
+  most, using a SciPy `cKDTree` within 4.5 Å, not the chain label it was deposited with.
+- **Ranking is completeness-first.** A candidate holding every declared target always beats one
+  that doesn't. Ties go to author-defined assemblies, then fewer chains, then larger interfaces,
+  then fewer unmodelled residues, then lower B-factors. So 1XVP yields chains C, D, G, H: the only
+  heterodimer that carries both CITCO and the fatty acid.
+
+**Alternate conformers** (`altlocs.py`, `extract.py`):
+- **Primary pose:** the highest occupancy wins.
+- **Comparison:** conformers are compared by RMSD after Hungarian matching of equivalent atoms,
+  so a ring flip doesn't count as a new pose.
+- **Branching:**
+  - A conformer at ≥ 0.5 Å symmetry-corrected RMSD from the primary branches the matrix into
+    `complex_<T>_altA/B/…`.
+  - The branch must touch the unit and must not clash below 1.5 Å.
+  - A conformer whose bond lengths disagree by more than 0.2 Å is treated as a broken model.
+- **Coordinates are never averaged.**
+
+**Forcefield and topology integrity** (`forcefields.py`, `ligands.py`, `topology.py`, `checks.py`):
+- **Forcefield lock.** One lock per batch:
+  - AMBER family (amber99sb-ildn default, amber14sb, amber19sb): acpype/GAFF2/AM1-BCC.
+  - CHARMM36m: CGenFF, with a hard stop above penalty 50.
+- **Ligand template.** Each ligand is parameterised once per batch. Every pose is mapped onto
+  that template's atom order, and a mismatched itp order is refused.
+- **Parameter conflicts.** Two ligands defining the same bonded parameter differently stop the
+  build.
+- **Atom walk.** The topology is walked against the coordinates atom by atom.
+- **Charge.** The net charge must be an integer before `genion` and zero after it.
+- **Zero-warning gate.** The final `grompp` must pass with zero warnings.
+
+**Crystallographic repair** (`fix.py`, `pdbio.py`):
+- **Chain IDs.** Chains are mapped back to author IDs using OpenMM's own label/auth rule.
+- **Missing atoms and loops.** Missing heavy atoms are built, and loops up to 8 residues
+  (`--max-loop`) are modelled.
+- **Long gaps.** Longer gaps stay open and are written with `TER`. A `TER` is also written
+  wherever a C(i)–N(i+1) distance exceeds 2.0 Å, so no tool bonds across a real break.
+- **Hydrogens, waters, additives.** All hydrogens are removed; each forcefield's own tools rebuild
+  them. Waters and crystallisation additives are stripped by policy (`--waters`,
+  `--keep-additives`).
+
+**MD execution and analysis** (`run.py`, `analyze.py`):
+- **Gates before production.** Equilibration must pass: EM must converge, and NVT/NPT must have
+  zero LINCS warnings across all log segments.
+- **Resume.** Checkpoint resume never mistakes a `-maxh` stop for completion.
+- **Ligand RMSD.** It is measured in the protein's frame, so pose drift is visible.
+- **Atom selection.** Atoms come from named index groups, not residue-name guesses.
 
 ## Validation
 
-The algorithms are general; these datasets are used to **stress-test** them:
+Two datasets **stress-test** the algorithms; neither is a special case in the code:
 
-* **Regression fixture: 1XVP** (`tests/data/1XVP.cif.gz`). A multi-copy asymmetric unit in which
-  one ligand is bound to only one of two copies, the ligand is modelled with two alternate
-  conformers, and five deposited assemblies compete. It exercises completeness-first unit
-  selection, label→author chain remapping and the altloc policy in a single small file. It runs
-  offline in the test suite.
-* **Benchmark panel: 82 human PXR/CAR crystal structures.** Every X-ray entry of human PXR
-  (UniProt O75469) and/or human CAR (Q14994), run through steps A–E. Results, timings and the
-  anomalies encountered are in [`benchmarks/pxr_car_validation.md`](benchmarks/pxr_car_validation.md).
+- **1XVP.** A multi-copy RXRα/CAR heterodimer with uneven ligand binding and alternate
+  conformers. It runs offline in every CI build as an end-to-end regression.
+- **82 human PXR/CAR crystal structures.** Every X-ray entry containing human PXR (O75469) or CAR
+  (Q14994).
 
-## Repository layout
+Full report: [benchmarks/pxr_car_validation.md](benchmarks/pxr_car_validation.md). The run is
+**partial**: B, C and E on the first 16 entries, D not yet on the panel, F–H not part of this
+benchmark.
 
-```
-gromatrix/
-├── pyproject.toml / pixi.toml / pixi.lock
-├── examples/manifest.yaml            # matrix definition consumed by step F
-├── examples/pipeline.yaml            # one-command A-H run (gmxprep-pipeline)
-├── benchmarks/                       # validation reports on real structure panels
-├── scripts/package_skills.py         # validates + zips each skill for upload (used by the release workflow)
-├── src/gromatrix/
-│   ├── net.py           # stdlib HTTP with retries + sha256 download cache
-│   ├── fetch.py         # [A] RCSB fetch: IDs, full-text or UniProt search
-│   ├── structure.py     # mmCIF/PDB metadata: entities, assemblies, operators, label->auth chains
-│   ├── altlocs.py       # alternate-conformer policy (primary by occupancy, symmetry-aware RMSD, no averaging)
-│   ├── fix.py           # [B] PDBFixer clean-up
-│   ├── extract.py       # [C] assembly/AU candidates, ligand mapping, completeness scoring, matrix slicing
-│   ├── relax.py         # [D] OpenMM two-stage restrained minimisation + integrity gates
-│   ├── afdb.py          # [E] AFDB comparison: RMSD (all/core), TM-score, Cα-lDDT
-│   ├── forcefields.py   # FF registry + batch lock
-│   ├── ligands.py       # ligand router: acpype/GAFF2 (AMBER) | CGenFF (CHARMM), cache, pose mapping
-│   ├── topology.py      # [ atomtypes ] split/merge, moleculetype normalisation, topol.top writer
-│   ├── checks.py        # [F] safety checks: top/gro atom walk, charge, named index, EM/MD log parsing
-│   ├── mdp.py           # em/nvt/npt/md mdp with FF-specific non-bonded settings
-│   ├── gmx.py           # logged subprocess wrappers, .ff dir discovery, ions.itp parsing
-│   ├── pdbio.py         # dependency-free PDB/GRO I/O, residue classification
-│   ├── gmx_prep.py      # [F] CLI: lock / plan / build / verify / smoke
-│   ├── run.py           # [G] MD protocol: phase table, resume, gates, progress, background, Slurm array
-│   ├── analyze.py       # [H] trjconv PBC/fit, MDAnalysis metrics, plots, matrix summary
-│   ├── pipeline.py      # A-H runner: manifest -> plan -> in-process steps, generated step-F manifest
-│   └── status.py        # gmxprep-status: A-H progress + next step (skill hand-off contract)
-├── tests/                # unit tests + offline end-to-end regression (tests/data/)
-└── .claude/skills/                   # agent skills: gromatrix (orchestrator), gromatrix-structure-prep,
-                                      # gromatrix-validate, gromatrix-gmx-builder, gromatrix-execution,
-                                      # gromatrix-analysis (each SKILL.md + references/)
-```
+| Step | Ran on | Succeeded | Time per entry (4-core CPU) |
+|---|---|---|---|
+| A fetch | 82 | 82 | – (cache rerun: 100 % `cached`) |
+| B fix | 16 | 16 | median 13 s (max 133 s, loop building) |
+| C extract | 16 | 16, all resolved to author-defined assemblies | 0.27 s |
+| D relax | 1XVP regression only | 1XVP: no failure labels, heavy-atom RMSD 1.06–1.12 Å | 10–13 s per file |
+| E AlphaFold | 16 entries / 25 scored chains | 25 / 25, none flagged | 1.8 s (1.2 s cached) |
 
-## Batch directory (created by the pipeline)
+| Agreement with AlphaFold (25 chains) | Mean | Range |
+|---|---|---|
+| TM-score | **0.949** | 0.896–0.991 |
+| Cα-lDDT | **0.938** | 0.874–0.977 |
+| Cα RMSD, confident core (pLDDT ≥ 70) | **0.99 Å** | 0.58–1.43 Å |
+| Cα RMSD, all aligned residues | 1.80 Å | 0.59–3.85 Å |
 
-```
-<batch>/
-├── forcefield.lock.json          # single source of truth for the forcefield
-├── raw/ fixed/ units/ relaxed/   # outputs of A-D (one entry per structure ID)
-├── af/ af_report.csv afdb/       # E: per-chain metrics, superposed models, cached AF models
-├── params/<RES>/                 # one parameter set per ligand/cofactor, shared by all systems
-├── systems/<ID>/                 # E1, T1, E1__T1 ...: topol.top, solv_ions.gro, index.ndx, em.tpr, run.sh
-│   ├── run.json, run.log         # G: per-phase state; {em,nvt,npt,md}.{tpr,cpt,gro,log,edr}, md.xtc
-│   └── analysis/                 # H: analysis.json, rmsd.png, rmsf.png, rg.png, hbonds.png
-├── slurm/run_array.sbatch        # G --slurm
-├── matrix.json                   # F
-├── analysis_summary.csv          # H: one row per system
-└── manifest.generated.yaml, pipeline.json   # gmxprep-pipeline
-```
+The TM-score implementation agrees with TM-align within 0.003.
 
-## Quick start
+Real deposition anomalies found on the panel. The first two exposed defects, which were fixed
+generically, with regression tests:
+
+| Entry | Anomaly | Handling |
+|---|---|---|
+| 1XV9 | Ligand labelled chain D, but bound in chain B's pocket (121 contacts with B, 0 with D) | HET membership follows contacts; correct author assembly chosen instead of the whole 8-chain AU |
+| 1XV9 | A second ligand copy, 48 Å away, deposited as "altloc B" | Branch must contact the unit; rejected as a copy, not a conformer |
+| 1ILH | Three genuine SR12813 binding orientations (symmetry-corrected RMSD 4.3 and 3.8 Å from the primary) | Matrix branched into `complex_SRL_altA/B/C`, all clash-free |
+| 1XVP | CITCO "conformers" that are a ring flip (raw 1.03 Å, symmetry-corrected 0.38 Å) | Primary pose only; averaging would have made 0.70 Å ring bonds |
+| 4J5X | RXRα–SRC-1 fusion chains with two UniProt accessions | Best-covering accession chosen; TM-score 0.09 → 0.90 |
+| 4S0S | No SIFTS record; engineered Adnectin binder | RCSB mapping fallback (TM 0.99); binder correctly reported as unmapped |
+| 14 PXR entries | Disordered β-insert (13–32 residues missing) | Left open with `TER` (35 gaps); 15 short loops modelled; 1,241 missing atoms built |
+
+## Quickstart (30-second verification)
+
+Install [pixi](https://pixi.sh) (`curl -fsSL https://pixi.sh/install.sh | bash`), then:
 
 ```bash
-pixi shell -e md          # from a clone; or the conda + pip install shown above
-B=runs/my_study
-gmxprep-gmx lock     --batch-dir $B --forcefield amber
-gmxprep-fetch        --batch-dir $B --ids <PDB IDs>            # or --uniprot <ACC> --method xray
-gmxprep-fix          --batch-dir $B
-gmxprep-extract      --batch-dir $B --targets <LIGAND RESNAME> # e.g. the drug; cofactors via --expect
-gmxprep-relax        --batch-dir $B
-gmxprep-afcompare    --batch-dir $B
-# write a manifest pairing units/<ID>/enzyme.pdb, target_<T>.pdb, complex_<T>.pdb (see examples/)
-gmxprep-gmx build    --batch-dir $B --manifest manifest.yaml
-gmxprep-gmx verify   --batch-dir $B && gmxprep-gmx smoke --batch-dir $B
-gmxprep-run          --batch-dir $B --threads 8 --gpu-id 0      # or --background, or --slurm --time 24:00:00
-gmxprep-analyze      --batch-dir $B                             # -> $B/analysis_summary.csv
-gmxprep-status       --batch-dir $B                             # where am I, what's next
+git clone https://github.com/markbujehein/gromatrix && cd gromatrix
+pixi install                 # locked conda-forge environment: OpenMM, PDBFixer, RDKit, MDAnalysis
+pixi run test                # fast test suite
+pixi run test-all            # full suite incl. the offline 1XVP end-to-end regression, with coverage
 ```
 
-Or all of it from one manifest ([`examples/pipeline.yaml`](examples/pipeline.yaml)):
+Steps lock → B → C on the bundled 1XVP structure run offline in about 5 seconds:
 
 ```bash
-gmxprep-pipeline --manifest pipeline.yaml --dry-run            # the exact commands; nothing runs
-gmxprep-pipeline --manifest pipeline.yaml --run-md --analyze   # A-H, stops at the first failed step
-gmxprep-pipeline --manifest pipeline.yaml --from G --run-md    # resume after fixing a failure
+mkdir -p runs/demo/raw && gunzip -c tests/data/1XVP.cif.gz > runs/demo/raw/1XVP.cif
+pixi run gmxprep-gmx lock --batch-dir runs/demo --forcefield amber
+pixi run gmxprep-fix --batch-dir runs/demo
+pixi run gmxprep-extract --batch-dir runs/demo --targets CID
+pixi run gmxprep-status --batch-dir runs/demo
+pixi run gmxprep-pipeline --manifest examples/pipeline.yaml --dry-run   # the A–H plan; nothing runs
 ```
 
-Rerunning is always safe:
-* steps A–F skip work whose inputs haven't changed;
-* G resumes from checkpoints;
-* H skips analyses that are up to date.
+Every command prints one JSON result line. The output of `gmxprep-extract` (paths shortened):
+
+```json
+{"ok": true, "units": [{"id": "1XVP", "selected": "assembly-2", "chains": ["C", "D", "G", "H"],
+  "inventory": {"F15": 1, "CID": 1}, "runner_up": "assembly-4",
+  "files": ["complex_CID.pdb", "enzyme.pdb", "target_CID.pdb", "unit.pdb"],
+  "warnings": ["CID: conformers equivalent within --altloc-rmsd (symmetry-corrected); primary used"]}],
+ "failed": []}
+```
+
+`gmxprep-status` then reports where the batch stands and what comes next (trimmed):
+
+```json
+{"ok": true, "forcefield": "amber99sb-ildn",
+ "steps": {"A": "done", "B": "done", "C": "done", "D": "pending", "E": "pending", "F": "pending", "G": "pending", "H": "pending"},
+ "next": {"skill": "gromatrix-validate", "command": "gmxprep-relax --batch-dir runs/demo", "why": "not relaxed: ['1XVP']"}}
+```
+
+Steps A and E need network access to RCSB, PDBe and AlphaFold DB. Steps F–H need GROMACS:
+`pixi shell -e md` adds GROMACS, acpype and Open Babel. For a full study, start from
+[`examples/pipeline.yaml`](examples/pipeline.yaml) (one command, A–H) or
+[`examples/manifest.yaml`](examples/manifest.yaml) (your own docked complexes, step F onwards).
+
+## Claude agent toolkit (no clone needed)
+
+Six skills let Claude plan, run and interpret the pipeline. Each
+[GitHub Release](https://github.com/markbujehein/gromatrix/releases/latest) attaches one
+upload-ready `.zip` per skill and a `SHA256SUMS` file. They are built reproducibly by
+[`scripts/package_skills.py`](scripts/package_skills.py), which validates them first with the
+same rules as claude.ai's skill upload.
+
+| Download | Role |
+|---|---|
+| [`gromatrix.zip`](https://github.com/markbujehein/gromatrix/releases/latest/download/gromatrix.zip) | Orchestrator: forcefield, targets, compute, step order, final report. **Install first.** |
+| [`gromatrix-structure-prep.zip`](https://github.com/markbujehein/gromatrix/releases/latest/download/gromatrix-structure-prep.zip) | A–C: fetch, repair, unit extraction, alternate conformers |
+| [`gromatrix-validate.zip`](https://github.com/markbujehein/gromatrix/releases/latest/download/gromatrix-validate.zip) | D–E: OpenMM integrity relaxation, AlphaFold comparison |
+| [`gromatrix-gmx-builder.zip`](https://github.com/markbujehein/gromatrix/releases/latest/download/gromatrix-gmx-builder.zip) | F: GROMACS topologies, ligand parameters, smoke test |
+| [`gromatrix-execution.zip`](https://github.com/markbujehein/gromatrix/releases/latest/download/gromatrix-execution.zip) | G: MD runs, resume, background or Slurm |
+| [`gromatrix-analysis.zip`](https://github.com/markbujehein/gromatrix/releases/latest/download/gromatrix-analysis.zip) | H: trajectory metrics, flags, interpretation |
+
+> The download links resolve once the first release is tagged. Until then, every CI run on `dev`
+> attaches the same zips as the `gromatrix-skills` build artifact.
+
+**claude.ai (web, desktop):**
+1. Open *Customize → Skills → Upload a skill*.
+2. Upload each `.zip` as downloaded. Don't unzip: each archive already has the `<skill>/SKILL.md`
+   layout claude.ai expects.
+3. Start with *"Use gromatrix to prepare …"*. The orchestrator hands off to the others by name.
+
+**Claude Code (CLI).** Unzip into your personal skills directory, so the skills are available in
+every project:
+
+```bash
+mkdir -p ~/.claude/skills && cd ~/.claude/skills
+for s in gromatrix gromatrix-structure-prep gromatrix-validate gromatrix-gmx-builder gromatrix-execution gromatrix-analysis; do
+  curl -fsSLO "https://github.com/markbujehein/gromatrix/releases/latest/download/$s.zip" && unzip -oq "$s.zip" && rm "$s.zip"
+done
+```
+
+**The skills drive the `gmxprep-*` commands, so install the package wherever those commands
+run.** No clone is needed:
+
+```bash
+conda create -n gromatrix -c conda-forge python=3.12 openmm pdbfixer rdkit biopython scipy pyyaml mdanalysis matplotlib-base
+conda activate gromatrix && pip install "gromatrix @ git+https://github.com/markbujehein/gromatrix"
+gmxprep-status --batch-dir test_batch      # prints {"ok": false, ...}: the commands are installed
+```
+
+Add `gromacs acpype openbabel` (conda-forge) on the machine that builds and runs MD. Claude Code on
+a workstation or cluster can run the whole pipeline. On claude.ai, the skills guide planning,
+manifests and interpretation, and run commands where code execution can install the package.
 
 ## Development
 
-The environment is managed with [pixi](https://pixi.sh). It reads `pixi.toml` and the committed
-`pixi.lock`, so everyone (and CI) gets byte-identical conda-forge packages:
-
 ```bash
-curl -fsSL https://pixi.sh/install.sh | bash   # or: brew install pixi / winget install prefix-dev.pixi
-pixi run test        # fast unit tests (Python 3.12, OpenMM, PDBFixer, RDKit from conda-forge)
-pixi run test-all    # full suite incl. the offline end-to-end regression, with coverage
-pixi run lint        # ruff check + ruff format --check (tiny env, no science stack)
-pixi run fmt         # auto-format and auto-fix before committing
-pixi run -e py310 test-all   # the other Python edges CI checks on pushes (py310, py313)
-pixi shell -e md     # adds GROMACS / acpype / Open Babel for real step F-H runs
+pixi run lint        # ruff check + format check (tiny env, no science stack)
+pixi run fmt         # auto-format and auto-fix
+pixi run test-all    # what CI runs; also: pixi run -e py310 test-all / -e py313
+pixi run -e skills package-skills   # validate + zip the skills into dist/skills/
+pixi shell -e md     # adds GROMACS / acpype / Open Babel for real step F–H runs
 ```
 
-Run `pixi run lint && pixi run test` before pushing. CI (`.github/workflows/ci.yml`) runs the same
-tasks:
-* Ruff, plus the full test suite with coverage, on every pull request, using Python 3.12.
-* Additionally Python 3.10 and 3.13 on pushes to `main`/`dev`.
-* Environments are cached from the lockfile, so jobs install in seconds. After changing
-  dependencies, run `pixi lock` and commit `pixi.lock`; CI uses `--locked` and fails if the lock
-  is stale.
-* The `skills` job validates and zips every agent skill on each push and pull request, so a broken
-  skill (e.g. invalid YAML frontmatter) fails CI instead of failing on upload.
+CI (`.github/workflows/ci.yml`) has four jobs:
+- **lint:** Ruff.
+- **tests:** with coverage, on Python 3.12 for pull requests, and on 3.10 / 3.12 / 3.13 for
+  pushes.
+- **skills:** validates and packages every skill.
+- **coverage badge:** published from `main` to the `badges` branch.
 
-**Releasing.** Set the version in `pyproject.toml` / `pixi.toml` / `src/gromatrix/__init__.py`, merge
-to `main`, then tag:
+Hardening:
+- Actions are pinned to commit SHAs (kept current by Dependabot).
+- Permissions default to `contents: read`.
+- Environments install from `pixi.lock` with `--locked`, so a stale lock fails CI.
 
-```bash
-pixi run -e skills package-skills          # optional local check: dist/skills/*.zip + SHA256SUMS
-git tag v0.2.0 && git push origin v0.2.0   # .github/workflows/release.yml publishes the zips
-```
+**Releasing.** Set the version in `pyproject.toml`, `pixi.toml` and `src/gromatrix/__init__.py`,
+merge to `main`, then push a matching `v*.*.*` tag. [`release.yml`](.github/workflows/release.yml)
+refuses a tag that doesn't match the version, then attaches the skill zips and `SHA256SUMS` to
+the release. Changes are tracked in [CHANGELOG.md](CHANGELOG.md).
 
-The release workflow refuses a tag that doesn't match the package version.
+## Documentation map
 
-## Design notes
-
-* **Step F in one paragraph.** `build` expands the manifest into systems and refuses an incomplete
-  matrix. For each system it:
-  1. runs `pdb2gmx -ignh -merge all` on the protein chains;
-  2. parameterises every non-ion HET once per batch, with acpype/GAFF2/AM1-BCC for AMBER or
-     CGenFF + `cgenff_charmm2gmx` for CHARMM (penalty-gated);
-  3. maps each pose onto the cached template;
-  4. maps crystal ions to the forcefield's `ions.itp`;
-  5. merges ligand `[ atomtypes ]`;
-  6. writes `topol.top`;
-  7. runs `editconf`, `solvate` and `genion`, with atom-walk and charge gates before and after;
-  8. writes a named `index.ndx`, a **zero-warning `grompp`** of `em.tpr`, and `run.sh`.
-* **Patterns adopted from SQUIP** (ESS-MimerAI/SQUIP), each in a stricter form:
-  * test-mode short runs became `smoke`;
-  * log scanning (LINCS, fatal errors, "Finished mdrun") became `checks.scan_md_log`, which is
-    aware of log segments and shared by smoke and step G;
-  * `[ molecules ]` vs `.gro` checks became a full atom walk with charge gates;
-  * absolute includes became a relative forcefield symlink;
-  * TaskBlaster caching became an input-hash resume;
-  * `-t` checkpoint chaining is built into `run.sh` and `gmxprep-run`.
-
-  Avoided: blanket `-maxwarn 1`, genion group numbers, hand-adjusted residue charges.
-* **Step G.** The protocol is a four-row phase table: each phase's input coordinates, whether it
-  is restrained (`-r`) and whether it continues a checkpoint (`-t`).
-  * **Resume.** Each phase is classified *done*, *partial* or *new* from the last segment of its
-    log, so an appended log from a `-maxh` stop is never mistaken for completion. Once a phase
-    reruns, every later phase starts fresh.
-  * **Interrupts.** `SIGTERM` is forwarded to mdrun, so it writes a checkpoint. The Slurm array
-    script sets `--signal=B:TERM@300` and `-maxh` just under the walltime, so resubmitting
-    continues every system.
-  * **Ownership.** `run.json` records the host and pid. A second runner skips a system that a live
-    runner owns. This is a check, not a lock. A runner that died on this host is reported as
-    `interrupted`.
-  * **Time budget.** `--maxh` covers the whole invocation, and each `mdrun` gets what is left.
-  * **Gates.** Gates also run on phases skipped as done, so an EM left by the smoke test is checked
-    too. NVT/NPT LINCS warnings are counted over every log segment. A phase that fails its gate
-    keeps `<phase>.failed.gro/.log` as evidence and is cleared, checkpoint included, so it is never
-    resumed as complete.
-  * **Safety.** Step F refuses to rebuild a system that has MD results unless `--force`.
-* **Step H.**
-  * **PBC.** A two-pass `trjconv`: `-pbc mol -center`, then `-fit rot+trans`, writing the solute
-    only. `Solute` is a prefix of every system, so the step-F index groups stay valid for the
-    solute files, and selections are built from those groups rather than residue-name heuristics.
-  * **Topology.** MDAnalysis reads a `.gro` (`editconf` of the solute `.tpr`), so the analysis
-    doesn't depend on the GROMACS `.tpr` version.
-  * **Pose retention.** Target RMSD is computed in the protein frame, without refitting the
-    target.
-  * **H-bonds.** Geometric (3.0 Å / 150°), with donors paired to hydrogens by distance; each
-    donor–acceptor pair gets an occupancy.
-* **Pipeline.** Each step runs in-process through its own CLI `main()`, so the same locks, caches
-  and gates apply. The pipeline's own logic is planning and generating the step-F manifest from
-  the step-C units. Every `steps.<name>` key in the manifest becomes that command's flag.
+| Document | For |
+|---|---|
+| [docs/architecture.md](docs/architecture.md) | Step contracts, problem → solution table, code and batch-directory layout, design decisions per step |
+| [docs/ai-collaboration.md](docs/ai-collaboration.md) | How the human–AI split worked: roles, interventions, review rounds, what is not verified |
+| [benchmarks/pxr_car_validation.md](benchmarks/pxr_car_validation.md) | Benchmark method, timings, AlphaFold metrics, the anomalies found |
+| `.claude/skills/<skill>/references/` | Full CLI flags, outputs and troubleshooting per step |
+| [CHANGELOG.md](CHANGELOG.md) | Release history and known limitations |
