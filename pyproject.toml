@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gromacs-matrix-prep"
+version = "0.1.0"
+description = "PDB -> GROMACS enzyme x target simulation matrix with a batch-locked forcefield"
+requires-python = ">=3.10"
+dependencies = ["pyyaml>=6", "numpy>=1.24", "scipy>=1.10", "biopython>=1.80"]
+
+[project.optional-dependencies]
+# rdkit/openmm/pdbfixer/acpype/openbabel/gromacs are best installed from conda-forge (environment.yml)
+test = ["pytest>=7"]
+
+[project.scripts]
+gmxprep-gmx = "gmxprep.gmx_prep:main"
+gmxprep-fix = "gmxprep.fix:main"
+gmxprep-extract = "gmxprep.extract:main"
+# Planned (contracts in README.md):
+# gmxprep-fetch = "gmxprep.fetch:main"
+# gmxprep-relax = "gmxprep.relax:main"
+# gmxprep-afcompare = "gmxprep.afcompare:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+markers = ["slow: end-to-end benchmarks (1XVP); deselect with -m 'not slow'"]
