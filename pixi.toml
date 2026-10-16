@@ -31,7 +31,7 @@ pytest-cov = ">=5"
 
 [feature.test.tasks]
 test = { cmd = "pytest -q -m 'not slow'", description = "fast unit tests" }
-test-all = { cmd = "pytest -q --cov=gmxprep --cov-report=term-missing:skip-covered --cov-report=xml", description = "full suite with coverage (incl. offline end-to-end regression)" }
+test-all = { cmd = "pytest -q --cov=gromatrix --cov-report=term-missing:skip-covered --cov-report=xml", description = "full suite with coverage (incl. offline end-to-end regression)" }
 
 [feature.lint.dependencies]
 ruff = ">=0.6"

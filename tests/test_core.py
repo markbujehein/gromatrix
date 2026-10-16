@@ -1,10 +1,10 @@
 import pytest
 
-from gmxprep import topology as topo
-from gmxprep.forcefields import ForcefieldMismatch, acquire_lock, load_lock, resolve
-from gmxprep.gmx_prep import load_manifest, main
-from gmxprep.mdp import protocols
-from gmxprep.pdbio import Atom, classify
+from gromatrix import topology as topo
+from gromatrix.forcefields import ForcefieldMismatch, acquire_lock, load_lock, resolve
+from gromatrix.gmx_prep import load_manifest, main
+from gromatrix.mdp import protocols
+from gromatrix.pdbio import Atom, classify
 
 ACPYPE_ITP = """
 [ atomtypes ]
@@ -131,7 +131,7 @@ def test_pose_maps_onto_template_order(tmp_path):
     from rdkit import Chem
     from rdkit.Chem import AllChem
 
-    from gmxprep.ligands import LigandParams, LigandSpec, build_template, pose_coords
+    from gromatrix.ligands import LigandParams, LigandSpec, build_template, pose_coords
 
     # acetate pose as heavy-atom PDB (no H, no bond orders), shuffled atom order for the 2nd pose
     ref = Chem.AddHs(Chem.MolFromSmiles("CC(=O)[O-]"))

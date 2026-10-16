@@ -3,13 +3,13 @@
 import numpy as np
 import pytest
 
-from gmxprep import altlocs
-from gmxprep.afdb import lddt_ca
-from gmxprep.fix import openmm_uses_label_ids
-from gmxprep.gmx_prep import load_manifest
-from gmxprep.net import _retry_after
-from gmxprep.pdbio import Atom, classify, read_pdb
-from gmxprep.topology import TopologyError, merge_params
+from gromatrix import altlocs
+from gromatrix.afdb import lddt_ca
+from gromatrix.fix import openmm_uses_label_ids
+from gromatrix.gmx_prep import load_manifest
+from gromatrix.net import _retry_after
+from gromatrix.pdbio import Atom, classify, read_pdb
+from gromatrix.topology import TopologyError, merge_params
 
 
 def test_chain_remap_mirrors_openmm_rule():
