@@ -75,7 +75,12 @@ def test_log_parsers(tmp_path):
     (tmp_path / "bad.log").write_text("Potential Energy  = 1.2e+07\nMaximum force     =  5.0e+02\n")
     assert not checks.parse_em_log(tmp_path / "bad.log", 1000)["converged"]  # positive Epot = overlap
     (tmp_path / "md.log").write_text("Step 10 LINCS WARNING\nFinished mdrun on rank 0\n")
-    assert checks.scan_md_log(tmp_path / "md.log") == {"finished": True, "lincs_warnings": 1, "fatal": False}
+    assert checks.scan_md_log(tmp_path / "md.log") == {
+        "finished": True,
+        "stopped_early": False,
+        "lincs_warnings": 1,
+        "fatal": False,
+    }
 
 
 def test_manifest_variants_from_altloc_branches(tmp_path):

@@ -16,6 +16,7 @@ import argparse
 import hashlib
 import json
 import os
+import shlex
 import shutil
 import sys
 import traceback
@@ -28,7 +29,7 @@ from . import checks
 from . import mdp as mdpmod
 from . import topology as topo
 from .forcefields import ForceField, ForcefieldMismatch, acquire_lock, assert_same, load_lock, resolve
-from .gmx import ToolError, data_prefix, gmxlib_env, ion_atom_names, locate_ff_dir, run
+from .gmx import ToolError, data_prefix, gmx_cmd, gmxlib_env, ion_atom_names, locate_ff_dir, run
 from .ligands import LigandSpec, parameterise, pose_coords
 from .pdbio import ION_RES, GroAtom, classify, read_gro, read_pdb, residue_block, write_gro, write_pdb
 
@@ -140,7 +141,7 @@ class Ctx:
     ligand_specs: dict[str, LigandSpec]
 
     def g(self, *sub: str) -> list[str]:
-        return [self.gmx, "-quiet", "-nobackup", *sub]
+        return gmx_cmd(self.gmx, *sub)
 
     @property
     def env(self) -> dict:
@@ -172,10 +173,15 @@ def _components(sd: SystemDef):
     return split.protein, ligs, split.ions
 
 
+# Bump when the build procedure changes in a way that changes its output, so existing
+# systems are rebuilt instead of reused (2: pdb2gmx -renum + residue labels for step H).
+BUILD_RECIPE = "2"
+
+
 def inputs_hash(sd: SystemDef, ctx: Ctx) -> str:
     """Fingerprint of everything a system is built from. A rebuild is skipped only
     when it is unchanged; this is SQUIP/TaskBlaster-style caching, but keyed on content."""
-    a, h = ctx.args, hashlib.sha256()
+    a, h = ctx.args, hashlib.sha256(BUILD_RECIPE.encode())
     for f in (sd.pdb, sd.sdf):
         if f:
             h.update(Path(f).read_bytes())
@@ -194,8 +200,15 @@ def inputs_hash(sd: SystemDef, ctx: Ctx) -> str:
     return h.hexdigest()[:16]
 
 
+def residue_labels(protein: list) -> list[str]:
+    """Author label ("A:100", "A:100A") of every protein residue in pdb2gmx order. pdb2gmx
+    runs with -renum, so the i-th residue of the built system is residue i+1, insertion
+    codes included; step H maps its residue indices back to these labels."""
+    return [f"{c}:{r}{i}" for c, r, i in dict.fromkeys((a.chain, a.resseq, a.icode) for a in protein)]
+
+
 def target_residues(protein: list, chains: set[str] | None) -> list[list[int]]:
-    """0-based [start, stop) ranges, in pdb2gmx residue order, of the protein-target
+    """0-based [start, stop) residue ranges, in pdb2gmx order, of the protein-target
     chains. pdb2gmx -merge all folds them into the enzyme's moleculetype, so this is
     how step H tells target residues from enzyme residues."""
     if not chains:
@@ -253,6 +266,11 @@ def build_system(sd: SystemDef, ctx: Ctx) -> dict:
         if stamp.get("status") == "ok" and stamp.get("inputs_sha") == digest:
             assert_same(ff, stamp["forcefield"], f"system {sd.id}")
             return stamp
+    if (wd / "run.json").exists() and not a.force:
+        raise ValueError(
+            f"system {sd.id}: inputs changed since it was built, and it has MD results (run.json); "
+            "rebuilding deletes them - pass --force to rebuild anyway"
+        )
     if wd.exists():
         shutil.rmtree(wd)
     wd.mkdir(parents=True)
@@ -289,6 +307,9 @@ def build_system(sd: SystemDef, ctx: Ctx) -> dict:
                 "-ignh",
                 "-merge",
                 "all",
+                # Consecutive residue numbers: 100/100A (insertion codes) stay distinct residues
+                # for step H. Author labels are kept in system.json (protein_residue_labels).
+                "-renum",
             ),
             wd,
             log,
@@ -456,7 +477,7 @@ def build_system(sd: SystemDef, ctx: Ctx) -> dict:
         "target": sd.target,
         "target_resname": sd.target_resname,
         "target_residues": target_residues(protein, sd.target_chains),
-        "protein_residues": len({(a.chain, a.resseq, a.icode) for a in protein}),
+        "protein_residue_labels": residue_labels(protein),
         "status": "ok",
         "forcefield": ff.identity(),
         "inputs_sha": digest,
@@ -573,11 +594,11 @@ def _smoke_one(wd: Path, a, env: dict) -> dict:
     idea, with pass/fail decided from the logs instead of by eye."""
 
     def g(*x):
-        return [a.gmx, "-quiet", "-nobackup", *x]
+        return gmx_cmd(a.gmx, *x)
 
     log = wd / "smoke.log"
-    emtol = float(mdpmod.read_mdp(wd / "mdp" / "em.mdp").get("emtol", 1000))
-    run(g("mdrun", "-deffnm", "em", *a.mdrun_args.split()), wd, log, env_extra=env)
+    emtol = mdpmod.emtol(wd / "mdp")
+    run(g("mdrun", "-deffnm", "em", *shlex.split(a.mdrun_args)), wd, log, env_extra=env)
     em = checks.parse_em_log(wd / "em.log", emtol)
     res = {"em": em, "ok": em["converged"]}
     if not em["converged"]:
@@ -610,7 +631,7 @@ def _smoke_one(wd: Path, a, env: dict) -> dict:
             log,
             env_extra=env,
         )
-        run(g("mdrun", "-deffnm", "smoke_nvt", *a.mdrun_args.split()), wd, log, env_extra=env)
+        run(g("mdrun", "-deffnm", "smoke_nvt", *shlex.split(a.mdrun_args)), wd, log, env_extra=env)
         md = checks.scan_md_log(wd / "smoke_nvt.log")
         res["nvt"] = md
         # Stricter than SQUIP's "< 10 LINCS warnings": a healthy 10 ps restrained NVT has none.

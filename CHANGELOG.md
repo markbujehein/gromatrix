@@ -28,6 +28,13 @@
   extra `analysis`.
 
 ### Changed
+- Step F runs `pdb2gmx -renum`, so insertion codes stay distinct residues. It records
+  `protein_residue_labels` (author labels) for step H. A build-recipe version in `inputs_sha`
+  rebuilds existing systems once.
+- Step F refuses to rebuild a system that has MD results (`run.json`) without `--force`, because
+  a rebuild deletes them.
+- `checks.scan_md_log` reads the newest log segment for how a run ended, and counts LINCS
+  warnings over all segments. It is shared by smoke and step G.
 - The import package is now `gromatrix`, as the distribution always was; it was `gmxprep`. The
   `gmxprep-*` command names are unchanged.
 

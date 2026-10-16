@@ -186,7 +186,17 @@ def test_target_residues_ranges():
     assert target_residues(prot, None) == []
 
 
-def test_examples_manifest_is_valid():
-    ex = Path(__file__).resolve().parents[1] / "examples" / "pipeline.yaml"
-    raw = yaml.safe_load(ex.read_text())
+def test_examples_manifest_is_valid_and_shipped_with_the_skill():
+    root = Path(__file__).resolve().parents[1]
+    ex = (root / "examples" / "pipeline.yaml").read_text()
+    raw = yaml.safe_load(ex)
     assert raw["batch_dir"] and "fetch" in raw["steps"]
+    ref = (root / ".claude" / "skills" / "gromatrix" / "references" / "pipeline-manifest.md").read_text()
+    assert ex in ref  # the skill zip carries the same template (no clone needed)
+
+
+def test_result_line_is_the_json_with_ok():
+    assert pipeline._result('{"ok": true, "x": 1}') == {"ok": True, "x": 1}
+    assert pipeline._result('{"step": "run", "phase": "md"}') is None
+    assert pipeline._result('{"ok": false, "error": "a \\"step\\" failed"}')["ok"] is False
+    assert pipeline._result("not json") is None

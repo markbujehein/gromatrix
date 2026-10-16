@@ -145,19 +145,50 @@ def write_index(
             groups["Protein"] += span
         if name in ligand_mols:
             groups[f"LIG_{name}"] += span
-    lines = []
-    for g, idx in groups.items():
-        if not idx:
-            continue
-        lines.append(f"[ {g} ]")
-        lines += [" ".join(f"{i:>6d}" for i in idx[k : k + 15]) for k in range(0, len(idx), 15)]
-    Path(out).write_text("\n".join(lines) + "\n")
+    write_ndx(groups, out)
     return {g: len(v) for g, v in groups.items() if v}
 
 
+def write_ndx(groups: dict[str, list[int]], out: Path) -> None:
+    """GROMACS index file; empty groups are left out."""
+    lines = []
+    for g, idx in groups.items():
+        if idx:
+            lines.append(f"[ {g} ]")
+            lines += [" ".join(f"{i:>6d}" for i in idx[k : k + 15]) for k in range(0, len(idx), 15)]
+    Path(out).write_text("\n".join(lines) + "\n")
+
+
+def read_ndx(path: Path) -> dict[str, list[int]]:
+    groups: dict[str, list[int]] = {}
+    cur = None
+    for line in Path(path).read_text().splitlines():
+        line = line.strip()
+        if line.startswith("["):
+            cur = line.strip("[] ")
+            groups[cur] = []
+        elif cur and line:
+            groups[cur] += [int(x) for x in line.split()]
+    return groups
+
+
 # ------------------------------------------------------------------ logs
+# mdrun prints "Finished mdrun" even when -maxh or a signal stopped it before nsteps.
+STOPPED_EARLY = re.compile(r"Run time exceeded|Received the (?:TERM|INT|USR1) signal|will terminate the run", re.I)
+
+
+def read_log(log: Path) -> str:
+    return Path(log).read_text(errors="replace") if Path(log).exists() else ""
+
+
+def last_segment(text: str) -> str:
+    """mdrun -cpi appends to the log; only the newest run segment says how it ended."""
+    i = text.rfind("Log file opened")
+    return text[i:] if i >= 0 else text
+
+
 def parse_em_log(log: Path, emtol: float) -> dict:
-    text = Path(log).read_text(errors="replace") if Path(log).exists() else ""
+    text = last_segment(read_log(log))
     fmax = re.search(r"Maximum force\s*=\s*([-\d.eE+]+)", text)
     epot = re.search(r"Potential Energy\s*=\s*([-\d.eE+]+)", text)
     res = {"fmax": float(fmax.group(1)) if fmax else None, "epot": float(epot.group(1)) if epot else None}
@@ -169,9 +200,13 @@ def parse_em_log(log: Path, emtol: float) -> dict:
 
 
 def scan_md_log(log: Path) -> dict:
-    text = Path(log).read_text(errors="replace") if Path(log).exists() else ""
+    """How the newest run segment ended; LINCS warnings are counted over every segment,
+    so resuming a run (mdrun -cpi) never hides a warning from an earlier segment."""
+    text = read_log(log)
+    seg = last_segment(text)
     return {
-        "finished": "Finished mdrun" in text,
+        "finished": "Finished mdrun" in seg and not STOPPED_EARLY.search(seg),
+        "stopped_early": bool(STOPPED_EARLY.search(seg)),
         "lincs_warnings": len(re.findall(r"LINCS WARNING", text, re.I)),
-        "fatal": bool(re.search(r"Fatal error", text)),
+        "fatal": bool(re.search(r"Fatal error", seg)),
     }

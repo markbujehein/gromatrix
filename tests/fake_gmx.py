@@ -8,6 +8,8 @@ Fault injection (environment):
   FAKE_GMX_EM_FMAX=<x>   EM ends with this Fmax (default 500)
   FAKE_GMX_LINCS=<name>  mdrun of <name> logs a LINCS warning
   FAKE_GMX_SLOW=<name>   mdrun of <name> logs step nsteps/2, pauses 0.5 s, then finishes
+  FAKE_GMX_FAIL=<name>   mdrun of <name> exits 1 before writing anything (bad flag, GPU error)
+  FAKE_GMX_MAXH=<name>   mdrun of <name> stops at nsteps/2 like -maxh: checkpoint, exit 0
 """
 
 import json
@@ -41,13 +43,17 @@ def main():
         return 0
     if sub == "mdrun":
         name = opt(args, "-deffnm")
+        if os.environ.get("FAKE_GMX_FAIL") == name:
+            print("Fatal error: GPU not available", file=sys.stderr)
+            return 1
         tpr = json.loads(Path(f"{name}.tpr").read_text())
         n = tpr["nsteps"]
         start = 0
         if "-cpi" in args and Path(f"{name}.cpt").exists():
             start = json.loads(Path(f"{name}.cpt").read_text())["step"]
         kill = os.environ.get("FAKE_GMX_KILL") == name
-        stop = n // 2 if kill else n
+        maxh = os.environ.get("FAKE_GMX_MAXH") == name
+        stop = n // 2 if kill or maxh else n
         lines = ["Log file opened on today", f"Started mdrun from step {start}"]
         for s in sorted({start, (start + stop) // 2, stop}):
             lines += ["           Step           Time", f"          {s}       {s * 0.002:.5f}", ""]
@@ -65,10 +71,12 @@ def main():
         if tpr["em"]:
             fmax = float(os.environ.get("FAKE_GMX_EM_FMAX", 500))
             lines += ["Potential Energy  = -1.0e+05", f"Maximum force     =  {fmax:.5e} on atom 12"]
+        if maxh:
+            lines.append(f"Step {stop}: Run time exceeded 0.990 hours, will terminate the run")
         lines.append("Finished mdrun on rank 0")
         with open(f"{name}.log", "a") as fh:
             fh.write("\n".join(lines) + "\n")
-        Path(f"{name}.gro").write_text(Path(tpr["c"]).read_text())
+        Path(f"{name}.gro").write_text(Path(tpr["c"]).read_text())  # mdrun writes confout on -maxh too
         Path(f"{name}.xtc").write_text("frames")
         return 0
     print(f"fake gmx: unsupported subcommand {sub}", file=sys.stderr)

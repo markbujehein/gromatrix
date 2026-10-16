@@ -1,6 +1,8 @@
 """[H] Trajectory analysis of every finished production run.
 
-    gmxprep-analyze --batch-dir B [--only ID ...] [--deffnm md] [--stride 1] [--force]
+    gmxprep-analyze --batch-dir B [--only ID ...] [--deffnm md] [--gmx gmx] [--stride 1] [--begin PS] [--force]
+                    [--hbond-distance 3.0] [--hbond-angle 150] [--hbond-min-occupancy 0.1]
+                    [--ligand-rmsd-max 3.0] [--ca-rmsd-max 4.0]
 
 Per system (systems/<id>/analysis/):
   1. PBC removal with GROMACS, by index-group *name* (never by number):
@@ -37,39 +39,18 @@ from pathlib import Path
 
 import numpy as np
 
-from .gmx import ToolError, run
+from . import checks
+from .gmx import gmx_cmd, run
 from .pdbio import read_gro
 
 BACKBONE = {"N", "CA", "C"}
 
 
 # ------------------------------------------------------------------ index groups
-def read_index(path: Path) -> dict[str, list[int]]:
-    groups: dict[str, list[int]] = {}
-    cur = None
-    for line in Path(path).read_text().splitlines():
-        line = line.strip()
-        if line.startswith("["):
-            cur = line.strip("[] ")
-            groups[cur] = []
-        elif cur and line:
-            groups[cur] += [int(x) for x in line.split()]
-    return groups
-
-
-def write_index(groups: dict[str, list[int]], path: Path) -> None:
-    lines = []
-    for g, idx in groups.items():
-        if idx:
-            lines.append(f"[ {g} ]")
-            lines += [" ".join(f"{i:>6d}" for i in idx[k : k + 15]) for k in range(0, len(idx), 15)]
-    Path(path).write_text("\n".join(lines) + "\n")
-
-
 def solute_groups(wd: Path) -> dict[str, list[int]]:
     """Step F's groups restricted to the solute, plus Backbone and C-alpha of the
     protein (computed from atom names in solv_ions.gro, same order as the .tpr)."""
-    groups = read_index(wd / "index.ndx")
+    groups = checks.read_ndx(wd / "index.ndx")
     solute = groups.get("Solute") or []
     if solute != list(range(1, len(solute) + 1)):
         raise ValueError("Solute group is not a prefix of the system; the index was not written by step F")
@@ -94,18 +75,19 @@ def pick_groups(groups: dict[str, list[int]], target_resname: str | None) -> tup
 
 
 # ------------------------------------------------------------------ PBC treatment
-def prepare_trajectory(wd: Path, a: argparse.Namespace, target_resname: str | None) -> tuple[Path, Path]:
+def prepare_trajectory(
+    wd: Path, a: argparse.Namespace, groups: dict[str, list[int]], target_resname: str | None
+) -> tuple[Path, Path]:
     """-> (solute.gro, fit.xtc) inside wd/analysis."""
     out = wd / "analysis"
     out.mkdir(exist_ok=True)
     log = out / "trjconv.log"
-    groups = solute_groups(wd)
-    write_index(groups, out / "solute.ndx")
+    checks.write_ndx(groups, out / "solute.ndx")
     centre, fit = pick_groups(groups, target_resname)
     tpr, xtc = f"{a.deffnm}.tpr", f"{a.deffnm}.xtc"
 
     def g(*x):
-        return [a.gmx, "-quiet", "-nobackup", *x]
+        return gmx_cmd(a.gmx, *x)
 
     # Full-system index for the first pass (it reads the full .tpr and .xtc).
     run(g("convert-tpr", "-s", tpr, "-n", "index.ndx", "-o", "analysis/solute.tpr"), wd, log, stdin="Solute\n")
@@ -219,7 +201,15 @@ def hbond_table(u, target: str, partner: str, d_a: float, angle: float) -> tuple
     return per_frame, table
 
 
-def compute_metrics(top: Path, traj: Path, target: str | None, enzyme: str | None, a: argparse.Namespace) -> dict:
+def compute_metrics(
+    top: Path,
+    traj: Path,
+    target: str | None,
+    enzyme: str | None,
+    a: argparse.Namespace,
+    labels: list[str] | None = None,
+) -> dict:
+    """`labels`: author residue labels in protein residue order (step F's system.json)."""
     import MDAnalysis as mda
     from MDAnalysis.analysis import rms
 
@@ -251,6 +241,8 @@ def compute_metrics(top: Path, traj: Path, target: str | None, enzyme: str | Non
             "resname": [str(x) for x in ca.resnames],
             "rmsf": [round(float(x), 3) for x in f.results.rmsf],
         }
+        if labels:  # pdb2gmx -renum: residue index i is the i-th author residue
+            res["rmsf"]["label"] = [labels[i] if i < len(labels) else None for i in res["rmsf"]["resindex"]]
         prot = u.select_atoms(enzyme)
         res["rg"] = [round(float(prot.radius_of_gyration()), 3) for _ in u.trajectory]
     elif tgt_heavy:  # target alone: internal RMSD after fitting the target itself
@@ -290,40 +282,65 @@ def flags(res: dict, role: str, a: argparse.Namespace) -> list[str]:
 INK, MUTED, GRID, C1, C2 = "#0b0b0b", "#52514e", "#e4e3df", "#2a78d6", "#eb6834"
 
 
-def _axes(title: str, xlabel: str, ylabel: str, size=(6.4, 3.6)):
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    fig, ax = plt.subplots(figsize=size, dpi=200)
+def _style(ax, title: str, xlabel: str, ylabel: str | None, grid: str = "both") -> None:
     ax.set_title(title, loc="left", fontsize=10, color=INK)
     ax.set_xlabel(xlabel, fontsize=9, color=MUTED)
-    ax.set_ylabel(ylabel, fontsize=9, color=MUTED)
+    if ylabel:
+        ax.set_ylabel(ylabel, fontsize=9, color=MUTED)
     ax.tick_params(colors=MUTED, labelsize=8)
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
     for side in ("left", "bottom"):
         ax.spines[side].set_color(GRID)
-    ax.grid(True, color=GRID, linewidth=0.6)
+    ax.grid(True, color=GRID, linewidth=0.6, axis=grid)
     ax.set_axisbelow(True)
-    return fig, ax
+
+
+def _figure(ncols: int = 1, size=(6.4, 3.6), **kw):
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    return plt.subplots(1, ncols, figsize=size, dpi=200, **kw)
 
 
 def _save(fig, path: Path) -> str:
-    fig.tight_layout()
-    fig.savefig(path)
     import matplotlib.pyplot as plt
 
+    fig.tight_layout()
+    fig.savefig(path)
     plt.close(fig)
     return path.name
+
+
+def _hbond_plot(hb: dict, t: list[float], sysid: str, path: Path) -> str:
+    fig, (ax1, ax2) = _figure(2, (9.6, 3.8), gridspec_kw={"width_ratios": [1.2, 1]})
+    _style(ax1, f"{sysid}: target-enzyme H-bonds per frame", "time (ns)", "H-bonds", grid="y")
+    _style(ax2, "persistence (donor → acceptor)", "occupancy (% of frames)", None, grid="x")
+    ax1.plot(t, hb["count"], color=C1, lw=1.0)
+    ax1.set_ylim(bottom=0)
+    top = hb["pairs"][:10]
+    if top:
+        labels = [f"{p['donor']} → {p['acceptor']}" for p in top][::-1]
+        occ = [100 * p["occupancy"] for p in top][::-1]
+        ax2.barh(labels, occ, color=C1, height=0.6)
+        for y, v in enumerate(occ):
+            ax2.text(v + 1, y, f"{v:.0f}%", va="center", fontsize=7, color=MUTED)
+        ax2.set_xlim(0, 110)
+        ax2.set_ylim(-0.75, max(len(top), 5) - 0.25)  # constant bar thickness for 1-10 pairs
+    else:
+        ax2.text(0.5, 0.5, "no persistent H-bonds", ha="center", va="center", color=MUTED, fontsize=9)
+        ax2.set_yticks([])
+    return _save(fig, path)
 
 
 def plots(res: dict, sysid: str, out: Path) -> list[str]:
     t = res["time_ns"]
     made = []
     if "ca_rmsd" in res or "target_rmsd" in res:
-        fig, ax = _axes(f"{sysid}: RMSD from the first production frame", "time (ns)", "RMSD (Å)")
+        fig, ax = _figure()
+        _style(ax, f"{sysid}: RMSD from the first production frame", "time (ns)", "RMSD (Å)")
         if "ca_rmsd" in res:
             ax.plot(t, res["ca_rmsd"], color=C1, lw=1.2, label="protein Cα")
         if "target_rmsd" in res:
@@ -333,47 +350,18 @@ def plots(res: dict, sysid: str, out: Path) -> list[str]:
         made.append(_save(fig, out / "rmsd.png"))
     if "rmsf" in res:
         r = res["rmsf"]
-        fig, ax = _axes(f"{sysid}: per-residue Cα RMSF", "residue (sequential index)", "RMSF (Å)", (7.2, 3.4))
+        fig, ax = _figure(size=(7.2, 3.4))
+        _style(ax, f"{sysid}: per-residue Cα RMSF", "residue (sequential index)", "RMSF (Å)")
         ax.plot(np.array(r["resindex"]) + 1, r["rmsf"], color=C1, lw=1.0)
         ax.set_ylim(bottom=0)
         made.append(_save(fig, out / "rmsf.png"))
     if "rg" in res:
-        fig, ax = _axes(f"{sysid}: protein radius of gyration", "time (ns)", "Rg (Å)")
+        fig, ax = _figure()
+        _style(ax, f"{sysid}: protein radius of gyration", "time (ns)", "Rg (Å)")
         ax.plot(t, res["rg"], color=C1, lw=1.2)
         made.append(_save(fig, out / "rg.png"))
     if "hbonds" in res:
-        import matplotlib.pyplot as plt
-
-        hb = res["hbonds"]
-        top = hb["pairs"][:10]
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9.6, 3.8), dpi=200, gridspec_kw={"width_ratios": [1.2, 1]})
-        for ax in (ax1, ax2):
-            for side in ("top", "right"):
-                ax.spines[side].set_visible(False)
-            for side in ("left", "bottom"):
-                ax.spines[side].set_color(GRID)
-            ax.tick_params(colors=MUTED, labelsize=8)
-            ax.grid(True, color=GRID, linewidth=0.6, axis="y" if ax is ax1 else "x")
-            ax.set_axisbelow(True)
-        ax1.plot(t, hb["count"], color=C1, lw=1.0)
-        ax1.set_title(f"{sysid}: target-enzyme H-bonds per frame", loc="left", fontsize=10, color=INK)
-        ax1.set_xlabel("time (ns)", fontsize=9, color=MUTED)
-        ax1.set_ylabel("H-bonds", fontsize=9, color=MUTED)
-        ax1.set_ylim(bottom=0)
-        if top:
-            labels = [f"{p['donor']} → {p['acceptor']}" for p in top][::-1]
-            occ = [100 * p["occupancy"] for p in top][::-1]
-            ax2.barh(labels, occ, color=C1, height=0.6)
-            for y, v in enumerate(occ):
-                ax2.text(v + 1, y, f"{v:.0f}%", va="center", fontsize=7, color=MUTED)
-            ax2.set_xlim(0, 110)
-            ax2.set_ylim(-0.75, max(len(top), 5) - 0.25)  # constant bar thickness for 1-10 pairs
-        else:
-            ax2.text(0.5, 0.5, "no persistent H-bonds", ha="center", va="center", color=MUTED, fontsize=9)
-            ax2.set_yticks([])
-        ax2.set_title("persistence (donor → acceptor)", loc="left", fontsize=10, color=INK)
-        ax2.set_xlabel("occupancy (% of frames)", fontsize=9, color=MUTED)
-        made.append(_save(fig, out / "hbonds.png"))
+        made.append(_hbond_plot(res["hbonds"], t, sysid, out / "hbonds.png"))
     return made
 
 
@@ -385,21 +373,37 @@ SUMMARY_COLS = [
 ]  # fmt: skip
 
 
+def settings(a: argparse.Namespace) -> dict:
+    """Everything a stored analysis depends on; a cached result is reused only if these match."""
+    return {
+        "deffnm": a.deffnm,
+        "stride": a.stride,
+        "begin_ps": a.begin,
+        "hbond": {"d_a_A": a.hbond_distance, "d_h_a_deg": a.hbond_angle, "min_occupancy": a.hbond_min_occupancy},
+        "flags": {"ligand_rmsd_max": a.ligand_rmsd_max, "ca_rmsd_max": a.ca_rmsd_max},
+    }
+
+
 def analyse_system(wd: Path, a: argparse.Namespace) -> dict:
     stamp = json.loads((wd / "system.json").read_text())
     out = wd / "analysis"
     report_p = out / "analysis.json"
     xtc = wd / f"{a.deffnm}.xtc"
-    run_state = json.loads((wd / "run.json").read_text()) if (wd / "run.json").exists() else {}
+    run_state = load_json(wd / "run.json")
     if not xtc.exists() or run_state.get("status") not in (None, "done"):
         return {"id": wd.name, "status": "skipped", "reason": "production run not finished (gmxprep-run)"}
-    if report_p.exists() and not a.force and report_p.stat().st_mtime > xtc.stat().st_mtime:
-        old = json.loads(report_p.read_text())
-        if old.get("status") == "ok":
-            return old
-    target, enzyme = selections(stamp, solute_groups(wd))
-    top, traj = prepare_trajectory(wd, a, stamp.get("target_resname"))
-    res = compute_metrics(top, traj, target, enzyme, a)
+    old = load_json(report_p)
+    if (
+        not a.force
+        and old.get("status") == "ok"
+        and old.get("settings") == settings(a)
+        and report_p.stat().st_mtime > xtc.stat().st_mtime
+    ):
+        return old
+    groups = solute_groups(wd)
+    target, enzyme = selections(stamp, groups)
+    top, traj = prepare_trajectory(wd, a, groups, stamp.get("target_resname"))
+    res = compute_metrics(top, traj, target, enzyme, a, stamp.get("protein_residue_labels"))
     report = {
         "id": wd.name,
         "status": "ok",
@@ -407,17 +411,36 @@ def analyse_system(wd: Path, a: argparse.Namespace) -> dict:
         "enzyme": stamp.get("enzyme"),
         "target": stamp.get("target"),
         "selections": {"target": target, "enzyme": enzyme},
-        "settings": {
-            "stride": a.stride,
-            "begin_ps": a.begin,
-            "hbond": {"d_a_A": a.hbond_distance, "d_h_a_deg": a.hbond_angle, "min_occupancy": a.hbond_min_occupancy},
-        },
+        "settings": settings(a),
         **res,
     }
     report["flags"] = flags(res, stamp.get("role"), a)
     report["plots"] = plots(res, wd.name, out)
     report_p.write_text(json.dumps(report, indent=1))
     return report
+
+
+def load_json(path: Path) -> dict:
+    try:
+        return json.loads(Path(path).read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def write_summary(b: Path) -> int:
+    """analysis_summary.csv from every system's analysis.json, so `--only X` never drops
+    the other systems' rows. Returns the number of rows."""
+    rows = []
+    for p in sorted((b / "systems").glob("*/analysis/analysis.json")):
+        r = load_json(p)
+        if r.get("status") == "ok":
+            rows.append(summary_row(r))
+    if rows:
+        with open(b / "analysis_summary.csv", "w", newline="") as fh:
+            w = csv.DictWriter(fh, SUMMARY_COLS)
+            w.writeheader()
+            w.writerows(rows)
+    return len(rows)
 
 
 def summary_row(r: dict) -> dict:
@@ -450,7 +473,7 @@ def cmd_analyze(a: argparse.Namespace) -> dict:
             continue
         try:
             r = analyse_system(wd, a)
-        except (ToolError, ValueError, OSError, KeyError) as e:
+        except Exception as e:  # one bad system (tool, MDAnalysis, numpy) never stops the batch
             r = {"id": wd.name, "status": "failed", "reason": f"{type(e).__name__}: {str(e)[:400]}"}
             (wd / "analysis").mkdir(exist_ok=True)
             (wd / "analysis" / "analysis.json").write_text(json.dumps(r, indent=1))
@@ -458,12 +481,7 @@ def cmd_analyze(a: argparse.Namespace) -> dict:
     if not results:
         return {"ok": False, "error": f"no built systems under {b}/systems"}
     done = [r for r in results if r["status"] == "ok"]
-    if done:
-        rows = [summary_row(r) for r in done]
-        with open(b / "analysis_summary.csv", "w", newline="") as fh:
-            w = csv.DictWriter(fh, SUMMARY_COLS)
-            w.writeheader()
-            w.writerows(rows)
+    n_rows = write_summary(b)
     failed = [{"id": r["id"], "reason": r["reason"]} for r in results if r["status"] == "failed"]
     return {
         "ok": not failed and bool(done),
@@ -471,7 +489,8 @@ def cmd_analyze(a: argparse.Namespace) -> dict:
         "skipped": [{"id": r["id"], "reason": r["reason"]} for r in results if r["status"] == "skipped"],
         "failed": failed,
         "flags": {r["id"]: r["flags"] for r in done if r.get("flags")},
-        "summary_csv": str(b / "analysis_summary.csv") if done else None,
+        "summary_csv": str(b / "analysis_summary.csv") if n_rows else None,
+        "summary_rows": n_rows,
     }
 
 
@@ -496,7 +515,7 @@ def main(argv: list[str] | None = None) -> int:
         out = cmd_analyze(a)
     except Exception as e:  # every failure is reported as the one-line JSON contract, never a traceback
         out = {"ok": False, "error": f"{type(e).__name__}: {e}"}
-    print(json.dumps(out))
+    print(json.dumps(out), flush=True)
     return 0 if out.get("ok") else 1
 
 

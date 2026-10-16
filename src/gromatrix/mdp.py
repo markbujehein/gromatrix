@@ -66,6 +66,10 @@ def write_all(ff: ForceField, outdir: Path, temp: float, md_ns: float) -> None:
         (outdir / f"{name}.mdp").write_text(f"; {name} - forcefield {ff.key}\n" + _fmt(params))
 
 
+def emtol(mdp_dir: Path) -> float:
+    return float(read_mdp(Path(mdp_dir) / "em.mdp").get("emtol", 1000))
+
+
 def read_mdp(path: Path) -> dict[str, str]:
     out = {}
     for line in Path(path).read_text().splitlines():

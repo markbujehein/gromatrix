@@ -7,9 +7,10 @@
 | `npt: …` failure after NVT passed | Density or box problem: the box is too small for the solute, or vacuum bubbles | Rebuild with a larger `--pad` in step F. |
 | `mdrun … exited with 1` | GROMACS error (GPU not available, a bad `-gpu_id`, an out-of-range thread count, a corrupt checkpoint) | Read the tail in `reason` and `run.log`. GPU problems: drop `--gpu-id` or fix `--mdrun-args`. |
 | `stopped before nsteps (signal or -maxh)` | Walltime reached, Ctrl-C, SIGTERM from the scheduler | Normal. Rerun or resubmit; the phase continues from its `.cpt`. |
-| `busy: running on <host>` | `run.json` says another runner owns the system | Wait. If that host's job is truly dead, its `run.json` stays `running`; run with `--only <id>` on that host, or ask the user before deleting `run.json`. |
+| `busy: running on <host>` | `run.json` says a runner on another host owns the system | Wait. A dead runner on *this* host is detected automatically. For another host, run `--only <id>` there, or ask the user before deleting `run.json`. |
 | `smoke test failed; fix it or pass --force` | Step F's smoke test failed | Go back to `gromatrix-gmx-builder`. |
-| `Fatal error: File 'nvt.cpt' does not exist` | Someone deleted files by hand | Rerun: once the missing input's phase is rerun, every later phase starts fresh. |
+| `nvt`/`npt` rerun unexpectedly | Its checkpoint was deleted by hand: a phase only counts as done while the checkpoint the next phase reads exists | Nothing to do: the phase reruns, and every later phase starts fresh. |
+| `--maxh time budget used up` | The budget ended between phases | Normal. Rerun or resubmit. |
 
 The production phase writes `md.xtc` with the `nstxout-compressed` set by step F (every 10 ps).
 Step H reads that file.

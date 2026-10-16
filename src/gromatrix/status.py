@@ -72,7 +72,7 @@ def batch_status(b: Path) -> dict:
 
     built = [p.parent for p in (b / "systems").glob("*/system.json") if (_json(p) or {}).get("status") == "ok"]
     stamps = {wd.name: _json(wd / "system.json") or {} for wd in built}
-    runs = {wd.name: (_json(wd / "run.json") or {}).get("status") for wd in built}
+    runs = {wd.name: _run_status(_json(wd / "run.json") or {}) for wd in built}
     analyses = {wd.name: (_json(wd / "analysis" / "analysis.json") or {}) for wd in built}
     sys_summary = {
         "built": len(built),
@@ -99,6 +99,15 @@ def batch_status(b: Path) -> dict:
 RUN_STATES = ("done", "running", "interrupted", "failed")
 
 
+def _run_status(st: dict) -> str | None:
+    """A 'running' run.json whose runner died on this host (kill -9, reboot) is 'interrupted'."""
+    from .run import owner_alive
+
+    if st.get("status") == "running" and owner_alive(st) is False:
+        return "interrupted"
+    return st.get("status")
+
+
 def _verdict(n_done: int, n_total: int) -> str:
     if n_total == 0:
         return "pending"
@@ -116,7 +125,7 @@ def _steps(per_id: dict, systems: dict) -> dict:
         )
     nb = systems["built"]
     out["F"] = "partial" if systems["failed"] and nb else ("done" if nb else "pending")
-    out["G"] = _verdict(systems["run_done"], nb)
+    out["G"] = _verdict(systems["run_done"], nb - systems["smoke_failed"])  # G never runs smoke failures
     out["H"] = _verdict(systems["analysed"], systems["run_done"]) if systems["run_done"] else "pending"
     return out
 

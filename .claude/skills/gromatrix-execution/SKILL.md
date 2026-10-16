@@ -34,8 +34,9 @@ gmxprep-run --batch-dir B --slurm --time 24:00:00 --threads 16 --gpus-per-task 1
 ```
 
 - **Slurm.** Hand the user `sbatch B/slurm/run_array.sbatch`; the script never submits itself.
-  Each array task runs one system with `-maxh` set just under the walltime, so a task that runs out
-  of time stops cleanly at a checkpoint. Resubmitting the same script resumes every system.
+  Each array task runs one system with a `--maxh` budget just under the walltime, shared by all its
+  phases. A task that runs out of time stops cleanly at a checkpoint, and resubmitting the same
+  script resumes every system.
 - **Progress.** Lines look like `{"step":"run","system":…,"phase":"npt","status":"running",
   "progress_pct":45,"overall_pct":61}`. The last line is the summary `{"ok":…}`. In background mode,
   read the log, or run `gmxprep-status`, which reads each `systems/<id>/run.json`.
@@ -43,13 +44,15 @@ gmxprep-run --batch-dir B --slurm --time 24:00:00 --threads 16 --gpus-per-task 1
 ## Resume
 
 Run the same command again. Each phase is either
-- **done**: skipped;
+- **done**: its gate is checked again, then it is skipped. That includes an EM left by step F's
+  smoke test;
 - **partial** (it has a `.cpt`): continued with `mdrun -cpi`;
 - **new**: run from scratch with `grompp`, then `mdrun`.
 
-Once one phase reruns, every phase after it starts fresh. If step F rebuilt the system (a new
-`inputs_sha`), it restarts from EM. Never delete checkpoints by hand to "restart cleanly". Never
-hand-edit `run.json`.
+Once one phase reruns, every phase after it starts fresh. A phase that failed its gate is cleared
+(its evidence is kept as `<phase>.failed.gro/.log`), so the rerun starts it fresh. Step F refuses
+to rebuild a system that has MD results unless `--force`, because rebuilding deletes them. Never
+delete checkpoints by hand to "restart cleanly". Never hand-edit `run.json`.
 
 ## Read the results
 
@@ -59,7 +62,9 @@ the tool output is in `run.log`, and each phase has its own `<phase>.log`.
 - **`failed`**: a gate stopped this system and the others carried on. The fix is upstream: a bad
   pose, a clash or wrong parameters. See `references/troubleshooting.md`. Do not add `-maxwarn`,
   and don't shorten the timestep to make warnings go away.
-- **`busy`**: another `gmxprep-run` owns the system. Don't start a second one.
+- **`busy`**: another `gmxprep-run` owns the system. Don't start a second one. This is a check,
+  not a lock, so never start two runners on the same systems on purpose.
+- **`not_started`**: the batch stopped (signal or `--maxh`) before reaching these systems.
 
 ## Hand-off
 

@@ -19,7 +19,7 @@ gmxprep-gmx smoke  --batch-dir B [--only ID ...] [--nvt-steps 5000] [--mdrun-arg
 |---|---|
 | `--forcefield` | `amber`→amber99sb-ildn, `amber99sb-ildn-tip4pew`, `amber14sb`, `amber19sb` (OPC), `charmm`→charmm36m. Must equal the lock. |
 | `--only` | system ids such as `E1`, `T1`, `E1__T1` |
-| `--force` | rebuild systems already stamped `ok` |
+| `--force` | rebuild systems already stamped `ok`; also required to rebuild a system that has MD results (`run.json`), because rebuilding deletes them |
 | `--pad` | minimum solute–box distance (nm). Keep it the same across a matrix. |
 | `--conc` | NaCl (KCl not supported) in mol/L on top of neutralisation |
 | `--maxwarn` | applies only to the final `em.tpr` gate. Leave it at 0. |
@@ -33,7 +33,9 @@ Environment variables for the CHARMM route: `CGENFF_BIN` (path to `cgenff`), `CG
 
 Build gates (any failure stops that system): topology↔coordinate atom walk after `solvate`, integer
 solute charge, zero net charge after `genion`, and a zero-warning `grompp` of `em.tpr`. Systems are
-skipped on rebuild only when their `inputs_sha` (source files, ligand specs, build flags) is unchanged.
+skipped on rebuild only when their `inputs_sha` (source files, ligand specs, build flags, build recipe
+version) is unchanged. `pdb2gmx` runs with `-renum`, so residues are numbered consecutively and
+insertion codes stay distinct residues.
 Manifest complexes may carry `variant:` (e.g. `altA`), giving system ids `E__T__altA`.
 
 `smoke` runs EM per system (pass = Fmax < emtol and negative Epot), then `--nvt-steps` of restrained
@@ -45,7 +47,8 @@ NVT (pass = finished, no fatal error, zero LINCS warnings), and records the resu
 `topol.top`, `protein.itp`, `<RES>.itp`, `ligand_params.itp`, `posre.itp`, `conf.gro`, `solv_ions.gro`,
 `index.ndx` (System, Protein, Solute, Solvent, LIG_<RES>), `em.tpr`, `mdp/{ions,em,nvt,npt,md}.mdp`,
 `run.sh` (em→nvt→npt→md with correct `-r`/`-t` chaining), `<ff>.ff` symlink for non-bundled ports,
-`system.json` (stamp), `build.log`, `error.txt` (on failure).
+`system.json` (stamp, with `target_resname`, `target_residues` and `protein_residue_labels` for
+step H), `build.log`, `error.txt` (on failure).
 
 Ligand cache `B/params/<RES>/`: `template.sdf` (atom order is the order used in the topology),
 `template.mol2`, `<RES>.itp`, `params.json`, `meta.json`, `param.log`.

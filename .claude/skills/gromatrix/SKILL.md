@@ -69,9 +69,9 @@ only if the user says so. G is the expensive step: confirm compute and length be
 
 ## One-command mode
 
-When the user wants everything run unattended, write a pipeline manifest (copy
-`examples/pipeline.yaml`: `batch_dir`, `forcefield`, `steps.<name>` flags, `ligands`, optional
-`targets`) and preview it first:
+When the user wants everything run unattended, write a pipeline manifest from the template in
+`references/pipeline-manifest.md` (`batch_dir`, `forcefield`, `steps.<name>` flags, `ligands`,
+optional `targets`) and preview it first:
 
 ```bash
 gmxprep-pipeline --manifest M --dry-run                  # exact commands, nothing runs
