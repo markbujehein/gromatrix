@@ -46,8 +46,8 @@ from pathlib import Path
 
 import numpy as np
 
-from .forcefields import ForcefieldMismatch, load_lock
-from .pdbio import PROTEIN_RES, Atom, read_pdb, write_pdb
+from .forcefields import ForcefieldMismatch, acquire_lock, lock_path, resolve
+from .pdbio import ION_RES, PROTEIN_RES, Atom, read_pdb, write_pdb
 
 FF_FILES = {
     "amber": {"gbn2": ["amber14-all.xml", "implicit/gbn2.xml"], "rf": ["amber14-all.xml"]},
@@ -129,6 +129,9 @@ def relax_file(path: Path, out_path: Path, family: str, a) -> dict:
     heavy = [at.index for at in topo_atoms if at.element is not None and at.element.symbol != "H"]
     pocket = set()
     het_xyz = np.array([[h.x, h.y, h.z] for h in hets if h.element not in ("H", "D")]) / 10.0
+    # The pocket-collapse gate ignores ions: metal sites are legitimately coordinated at about 2 Å.
+    organic = [h for h in hets if h.element not in ("H", "D") and h.resname not in ION_RES]
+    org_xyz = np.array([[h.x, h.y, h.z] for h in organic]) if organic else np.zeros((0, 3))
     if len(het_xyz):
         near = cKDTree(het_xyz).query(pos0[heavy])[0] < a.pocket_cutoff / 10.0
         pocket_res = {topo_atoms[i].residue for i, close in zip(heavy, near) if close}
@@ -175,6 +178,7 @@ def relax_file(path: Path, out_path: Path, family: str, a) -> dict:
     }
     if not (np.isfinite(pos2).all() and math.isfinite(e0) and math.isfinite(e2)):
         res.update(status="failed", failure="explosion", reason="non-finite energy or coordinates")
+        out_path.unlink(missing_ok=True)  # never leave an older, passing output behind
         return res
 
     drop = (e2 - e0) / n
@@ -205,9 +209,11 @@ def relax_file(path: Path, out_path: Path, family: str, a) -> dict:
             )
         )
     new_breaks = _ca_breaks(relaxed) - _ca_breaks(poly)
-    if len(het_xyz):
+    if len(org_xyz):
+        start_xyz = np.array([[x.x, x.y, x.z] for x in poly])
         rel_xyz = np.array([[x.x, x.y, x.z] for x in relaxed])
-        res["pocket_min_dist"] = round(float(cKDTree(rel_xyz).query(het_xyz * 10)[0].min()), 2)
+        res["pocket_min_dist_initial"] = round(float(cKDTree(start_xyz).query(org_xyz)[0].min()), 2)
+        res["pocket_min_dist"] = round(float(cKDTree(rel_xyz).query(org_xyz)[0].min()), 2)
 
     failures = []
     if res["rmsd_heavy"] > a.max_rmsd:
@@ -217,22 +223,36 @@ def relax_file(path: Path, out_path: Path, family: str, a) -> dict:
         res["ca_breaks"] = sorted(new_breaks)[:10]
     if e2 > 0:
         failures.append("unresolved clash")
-    if res.get("pocket_min_dist", 9.9) < 2.0:
+    # Collapse = the protein moved *into* the held-out ligand's space: closer than 2.0 Å
+    # and at least 0.5 Å closer than in the input. Contacts that are already short in the
+    # crystal (covalent cofactors, Schiff bases) are not failures.
+    if (
+        "pocket_min_dist" in res
+        and res["pocket_min_dist"] < 2.0
+        and res["pocket_min_dist"] < res["pocket_min_dist_initial"] - 0.5
+    ):
         failures.append("pocket collapse")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    failed_path = out_path.with_suffix(".failed.pdb")
     if failures:
         res.update(status="failed", failure=", ".join(failures))
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    write_pdb(out_path, relaxed + [h for h in hets if h.element not in ("H", "D")])
+        # Failed structures are kept for inspection under a name no downstream glob matches.
+        out_path.unlink(missing_ok=True)
+        write_pdb(failed_path, relaxed + [h for h in hets if h.element not in ("H", "D")])
+        res["output"] = failed_path.name
+    else:
+        failed_path.unlink(missing_ok=True)
+        write_pdb(out_path, relaxed + [h for h in hets if h.element not in ("H", "D")])
     return res
 
 
 def _family(a) -> str:
-    if a.forcefield:
-        return "charmm" if a.forcefield.lower().startswith("charmm") else "amber"
-    try:
-        return load_lock(a.batch_dir).family
-    except ForcefieldMismatch:
-        return "amber"
+    """Forcefield family from the batch lock. An explicit --forcefield must agree
+    with an existing lock (ForcefieldMismatch otherwise); amber is used only when
+    no lock exists and nothing was requested."""
+    if lock_path(a.batch_dir).exists():
+        return acquire_lock(a.batch_dir, a.forcefield).family
+    return resolve(a.forcefield).family if a.forcefield else "amber"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -266,7 +286,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--platform", default="auto")
     a = ap.parse_args(argv)
 
-    family = _family(a)
+    try:
+        family = _family(a)
+    except (ForcefieldMismatch, KeyError) as e:
+        print(json.dumps({"ok": False, "error": f"{type(e).__name__}: {e}"}))
+        return 1
     units = (
         sorted(p for p in (a.batch_dir / a.indir).iterdir() if p.is_dir()) if (a.batch_dir / a.indir).exists() else []
     )
@@ -277,7 +301,14 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     results, failed = [], []
     for u in units:
-        files = sorted({f for pat in a.files for f in u.glob("*.pdb") if fnmatch.fnmatch(f.name, pat)})
+        files = sorted(
+            {
+                f
+                for pat in a.files
+                for f in u.glob("*.pdb")
+                if fnmatch.fnmatch(f.name, pat) and not f.name.endswith(".failed.pdb")
+            }
+        )
         report = {}
         for f in files:
             try:

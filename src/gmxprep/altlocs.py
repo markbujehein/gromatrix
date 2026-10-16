@@ -64,7 +64,23 @@ def parse_all_atoms(path: Path) -> list[tuple[Atom, str]]:
             "label_alt_id",
             "pdbx_PDB_model_num",
         ]
-        data = [d.get(f"_atom_site.{c}", []) for c in cols]
+        n = len(d.get("_atom_site.Cartn_x", []))
+        required = {"auth_atom_id", "auth_comp_id", "auth_asym_id", "auth_seq_id", "Cartn_x", "Cartn_y", "Cartn_z"}
+        missing = [c for c in required if f"_atom_site.{c}" not in d]
+        if missing:
+            raise ValueError(f"{path.name}: mmCIF atom_site lacks required columns {missing}")
+        # Optional columns may be absent in minimal mmCIFs: pad with '?' instead of zipping to nothing.
+        defaults = {
+            "group_PDB": "ATOM",
+            "pdbx_PDB_ins_code": "?",
+            "type_symbol": "?",
+            "B_iso_or_equiv": "0",
+            "occupancy": "1",
+            "label_alt_id": ".",
+            "pdbx_PDB_model_num": "1",
+        }
+        data = [d.get(f"_atom_site.{c}") or [defaults.get(c, "?")] * n for c in cols]
+        data = [v if isinstance(v, list) else [v] for v in data]
         first = None
         for rec, name, comp, ch, seq, ins, x, y, z, el, b, occ, alt, model in zip(*data):
             first = first or model
@@ -82,9 +98,9 @@ def parse_all_atoms(path: Path) -> list[tuple[Atom, str]]:
                         float(x),
                         float(y),
                         float(z),
-                        el.upper(),
-                        float(b),
-                        float(occ),
+                        (el if el not in (".", "?") else "".join(c for c in name if c.isalpha())[:1]).upper(),
+                        float(b) if b not in (".", "?") else 0.0,
+                        float(occ) if occ not in (".", "?") else 1.0,
                     ),
                     _clean(alt),
                 )
@@ -110,8 +126,8 @@ def parse_all_atoms(path: Path) -> list[tuple[Atom, str]]:
                     float(line[38:46]),
                     float(line[46:54]),
                     el.upper(),
-                    float(line[60:66] or 0),
-                    float(line[54:60] or 1),
+                    float(line[60:66].strip() or 0),
+                    float(line[54:60].strip() or 1),
                 ),
                 line[16].strip(),
             )
@@ -120,12 +136,14 @@ def parse_all_atoms(path: Path) -> list[tuple[Atom, str]]:
 
 
 def _res_key(a: Atom):
-    return (a.chain, a.resname, a.resseq, a.icode)
+    """Residue *position*. The residue name is excluded so that microheterogeneity
+    (e.g. altloc A = SER, B = THR at one position) is one group with two conformers."""
+    return (a.chain, a.resseq, a.icode)
 
 
 def resolve(records: list[tuple[Atom, str]]) -> tuple[list[Atom], list[dict]]:
-    """Choose the primary conformer per residue. Returns (primary atoms in file
-    order, one group dict per residue that had altlocs; hydrogens excluded)."""
+    """Choose the primary conformer per residue position. Returns (primary atoms in
+    file order, one group dict per position that had altlocs; hydrogens excluded)."""
     by_res: dict[tuple, list[tuple[Atom, str]]] = OrderedDict()
     for a, alt in records:
         by_res.setdefault(_res_key(a), []).append((a, alt))
@@ -137,18 +155,24 @@ def resolve(records: list[tuple[Atom, str]]) -> tuple[list[Atom], list[dict]]:
             continue
         occ = {L: float(np.mean([a.occ for a, alt in recs if alt == L])) for L in alts}
         primary = sorted(alts, key=lambda L: (-round(occ[L], 3), L))[0]
-        primary_atoms += [a for a, alt in recs if alt in ("", primary)]
+        primary_name = next(a.resname for a, alt in recs if alt == primary)
+        # Shared atoms belong to every conformer, but only if they carry that conformer's
+        # residue name; with microheterogeneity there are no shared atoms.
+        primary_atoms += [a for a, alt in recs if alt == primary or (alt == "" and a.resname == primary_name)]
         heavy = [(a, alt) for a, alt in recs if a.element not in ("H", "D")]
+        resname = {L: next(a.resname for a, alt in recs if alt == L) for L in alts}
         groups.append(
             {
                 "chain": key[0],
-                "resname": key[1],
-                "resseq": key[2],
-                "icode": key[3],
+                "resname": primary_name,
+                "resseq": key[1],
+                "icode": key[2],
                 "primary": primary,
+                "microheterogeneity": len(set(resname.values())) > 1,
                 "alts": {
                     L: {
                         "occ": round(occ[L], 3),
+                        "resname": resname[L],
                         "atoms": {a.name: [a.x, a.y, a.z] for a, alt in heavy if alt in ("", L)},
                         "elements": {a.name: a.element for a, alt in heavy if alt in ("", L)},
                     }
@@ -157,6 +181,49 @@ def resolve(records: list[tuple[Atom, str]]) -> tuple[list[Atom], list[dict]]:
             }
         )
     return primary_atoms, groups
+
+
+def reduce_to_primary(path: Path, groups: list[dict], out_dir: Path) -> Path:
+    """Write a copy of the input holding only the primary conformer of every residue,
+    with altloc IDs cleared. All other records (SEQRES, assemblies, ...) are kept.
+    PDBFixer then builds missing atoms and loops on the conformer we keep. Without
+    this it builds on whichever altloc OpenMM met first."""
+    primary = {(g["chain"], g["resseq"], g["icode"]): g["primary"] for g in groups}
+    path, out_dir = Path(path), Path(out_dir)
+    out = out_dir / path.name
+    if path.suffix.lower() in (".cif", ".mmcif"):
+        from Bio.PDB.MMCIF2Dict import MMCIF2Dict
+        from Bio.PDB.mmcifio import MMCIFIO
+
+        d = MMCIF2Dict(str(path))
+        alt = d.get("_atom_site.label_alt_id", [])
+        keys = zip(
+            d["_atom_site.auth_asym_id"],
+            d["_atom_site.auth_seq_id"],
+            d.get("_atom_site.pdbx_PDB_ins_code") or ["?"] * len(alt),
+        )
+        keep = [
+            a in (".", "?") or a == primary.get((ch, int(seq), _clean(ins))) for a, (ch, seq, ins) in zip(alt, keys)
+        ]
+        for k in [k for k in d if k.startswith("_atom_site.")]:
+            if isinstance(d[k], list) and len(d[k]) == len(keep):
+                d[k] = [v for v, ok in zip(d[k], keep) if ok]
+        if "_atom_site.label_alt_id" in d:
+            d["_atom_site.label_alt_id"] = ["."] * sum(keep)
+        io = MMCIFIO()
+        io.set_dict(d)
+        io.save(str(out))
+        return out
+    lines = []
+    for line in path.read_text().splitlines():
+        if line.startswith(("ATOM", "HETATM", "ANISOU")) and len(line) > 26 and line[16] != " ":
+            key = (line[21].strip(), int(line[22:26]), line[26].strip())
+            if line[16] != primary.get(key):
+                continue
+            line = line[:16] + " " + line[17:]
+        lines.append(line)
+    out.write_text("\n".join(lines) + "\n")
+    return out
 
 
 # ------------------------------------------------------------------ geometry
@@ -238,6 +305,7 @@ def summarise(groups: list[dict], polymer_res: set[str]) -> list[str]:
 
 
 def index(groups: list[dict]) -> dict[tuple, dict]:
+    """(chain, primary resname, resseq, icode) -> group, matching extract.Res.key."""
     return {(g["chain"], g["resname"], g["resseq"], g["icode"]): g for g in groups}
 
 

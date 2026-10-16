@@ -86,9 +86,19 @@ class Atom:
         return (self.chain, self.resseq, self.icode, self.resname)
 
     def pdb_line(self, serial: int) -> str:
+        """Fixed-column PDB ATOM/HETATM record. A 4-character residue name uses
+        column 21 (the GROMACS/CHARMM convention, which read_pdb understands);
+        anything that cannot fit its columns raises instead of shifting them."""
+        if len(self.name) > 4 or len(self.resname) > 4 or len(self.chain) > 1 or len(self.icode) > 1:
+            raise ValueError(f"{self.resname}{self.resseq}{self.chain}:{self.name} does not fit PDB columns")
+        if not -999 <= self.resseq <= 9999:
+            raise ValueError(
+                f"residue number {self.resseq} does not fit PDB columns 23-26; use mmCIF input or renumber the chain"
+            )
         name = self.name if len(self.name) == 4 else f" {self.name:<3}"
+        resname = f"{self.resname:<4}" if len(self.resname) == 4 else f"{self.resname:>3} "
         return (
-            f"{self.record:<6}{serial % 100000:5d} {name:<4} {self.resname:>3} {self.chain:1}"
+            f"{self.record:<6}{serial % 100000:5d} {name:<4} {resname}{self.chain:1}"
             f"{self.resseq:4d}{self.icode:1}   {self.x:8.3f}{self.y:8.3f}{self.z:8.3f}"
             f"{self.occ:6.2f}{self.b:6.2f}          {self.element:>2}"
         )
@@ -196,8 +206,10 @@ def classify(atoms: list[Atom], protein_chains: set[str] | None = None) -> Split
         if r.resname in WATER_RES:
             continue
         heavy = [a for a in res if not is_hydrogen(a)]
-        if r.resname in PROTEIN_RES and (protein_chains is None or r.chain in protein_chains):
-            split.protein.extend(heavy)
+        if r.resname in PROTEIN_RES:
+            # Residues of unselected protein chains are dropped. They are never ligands.
+            if protein_chains is None or r.chain in protein_chains:
+                split.protein.extend(heavy)
         elif r.resname in ION_RES and len(heavy) == 1:
             split.ions.append(heavy[0])
         elif heavy:

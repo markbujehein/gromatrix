@@ -84,6 +84,13 @@ def load_manifest(path: Path, allow_incomplete: bool) -> Manifest:
         )
 
     systems = [SystemDef(eid, "enzyme", p(e["pdb"])) for eid, e in enzymes.items()]
+    lig_names = [t["resname"] for t in targets.values() if t.get("kind", "ligand") == "ligand"]
+    dup = sorted({r for r in lig_names if lig_names.count(r) > 1})
+    if dup:
+        raise ValueError(
+            f"several ligand targets share the residue name(s) {dup}; each target needs a unique "
+            "resname (they would share one parameter template)"
+        )
     for tid, t in targets.items():
         kind = t.get("kind", "ligand")
         if kind == "protein":
@@ -140,6 +147,8 @@ class Ctx:
 def _components(sd: SystemDef):
     """-> (protein atoms, [(resname, pdb_block|None, sdf|None)], ion atoms)"""
     if sd.pdb is None:
+        if sd.sdf is None:
+            raise ValueError(f"system {sd.id}: target has neither a pdb nor an sdf (and no complex to take it from)")
         return [], [(sd.target_resname, None, str(sd.sdf))], []
     atoms = read_pdb(sd.pdb)
     if sd.role == "target" and sd.target_resname:  # ligand-alone system: keep only that residue
@@ -147,6 +156,11 @@ def _components(sd: SystemDef):
         if not atoms:
             raise ValueError(f"{sd.pdb} has no residue {sd.target_resname}")
     split = classify(atoms, sd.protein_chains)
+    if sd.sdf and sum(r[0].resname == sd.target_resname for r in split.ligands) > 1:
+        raise ValueError(
+            f"system {sd.id}: one docked sdf but several {sd.target_resname} residues in {sd.pdb.name}; "
+            "an sdf pose can stand for exactly one copy"
+        )
     ligs = []
     for res in split.ligands:
         rn = res[0].resname
@@ -164,6 +178,9 @@ def inputs_hash(sd: SystemDef, ctx: Ctx) -> str:
             h.update(Path(f).read_bytes())
     for res, spec in sorted(ctx.ligand_specs.items()):
         h.update(json.dumps([res, spec.__dict__], sort_keys=True, default=str).encode())
+        for f in (spec.sdf, spec.str_file):  # file *contents*, not just their paths
+            if f and Path(f).exists():
+                h.update(Path(f).read_bytes())
     h.update(
         json.dumps(
             [ctx.ff.identity(), a.box, a.pad, a.conc, a.temp, a.md_ns, sorted(sd.protein_chains or [])], sort_keys=True
@@ -265,7 +282,14 @@ def build_system(sd: SystemDef, ctx: Ctx) -> dict:
     for rn, block, sdf in ligs:
         spec = ctx.ligand_specs.get(rn) or LigandSpec(rn)
         params = parameterise(
-            spec, block, ff, ctx.ff_dir, ctx.batch / "params", a.allow_auto_protonation, a.accept_high_penalty
+            spec,
+            block,
+            ff,
+            ctx.ff_dir,
+            ctx.batch / "params",
+            a.allow_auto_protonation,
+            a.accept_high_penalty,
+            refresh=a.force,
         )
         if rn not in seen:
             seen[rn] = params
@@ -641,7 +665,7 @@ def main(argv: list[str] | None = None) -> int:
         out = {"lock": cmd_lock, "plan": cmd_plan, "build": cmd_build, "verify": cmd_verify, "smoke": cmd_smoke}[a.cmd](
             a
         )
-    except (ForcefieldMismatch, ValueError, KeyError, FileNotFoundError) as e:
+    except Exception as e:  # every failure is reported as the one-line JSON contract, never a traceback
         out = {"ok": False, "error": f"{type(e).__name__}: {e}"}
     print(json.dumps(out))
     return 0 if out.get("ok") else 1

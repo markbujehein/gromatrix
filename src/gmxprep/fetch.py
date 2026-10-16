@@ -33,7 +33,8 @@ FILES = "https://files.rcsb.org/download/{id}.{ext}.gz"
 SEARCH = "https://search.rcsb.org/rcsbsearch/v2/query"
 ENTRY = "https://data.rcsb.org/rest/v1/core/entry/{id}"
 UNIPROT_ATTR = "rcsb_polymer_entity_container_identifiers.reference_sequence_identifiers.database_accession"
-ID_RE = re.compile(r"^[0-9][A-Za-z0-9]{3}$|^pdb_[0-9]{8}$", re.I)
+# Classic 4-character IDs and the extended wwPDB form pdb_0000xxxx.
+ID_RE = re.compile(r"^[0-9][A-Za-z0-9]{3}$|^pdb_0000[0-9][a-z0-9]{3}$", re.I)
 
 
 def search(text: str, limit: int) -> list[str]:
@@ -102,18 +103,28 @@ def revision(pid: str) -> dict:
     return {k: info.get(k) for k in ("revision_date", "major_revision", "minor_revision", "initial_release_date")}
 
 
+def _revision_or_none(pid: str) -> dict | None:
+    """Revision metadata is bookkeeping: an unavailable Data API must not fail a download."""
+    try:
+        return revision(pid)
+    except HTTPError:
+        return None
+
+
 def fetch_one(pid: str, fmt: str, cache: Cache, check_updates: bool) -> dict:
     pid = pid.upper()
     out = {"id": pid, "files": {}}
     for ext in ("cif", "pdb") if fmt == "both" else (fmt,):
         name = f"{pid}.{ext}"
-        extra = {}
+        stale, current = False, None
         if check_updates and cache.valid(name):
-            extra = {"revision": revision(pid)}
-            if extra["revision"] != cache.entries[name].get("revision"):
-                (cache.dir / name).unlink()  # stale: revised since it was cached
+            current = _revision_or_none(pid)
+            stale = current is not None and current != cache.entries[name].get("revision")
+        need_download = stale or not cache.valid(name)
+        # The revision is recorded with every download, so a later --check-updates has a baseline.
+        extra = {"revision": current or _revision_or_none(pid)} if need_download else {}
         try:
-            path, status = cache.fetch(name, FILES.format(id=pid, ext=ext), gunzip=True, extra=extra)
+            path, status = cache.fetch(name, FILES.format(id=pid, ext=ext), gunzip=True, extra=extra, force=stale)
         except HTTPError as e:
             if e.status == 404 and ext == "pdb":
                 out["files"][ext] = {"status": "unavailable", "reason": "no legacy PDB file (large entry); use mmCIF"}
@@ -172,7 +183,7 @@ def main(argv: list[str] | None = None) -> int:
         "failed": failed,
         "counts": {
             s: sum(f["status"] == s for d in done for f in d["files"].values())
-            for s in ("downloaded", "cached", "repaired")
+            for s in ("downloaded", "cached", "repaired", "updated")
         },
     }
     print(json.dumps(summary))

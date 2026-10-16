@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -225,9 +226,10 @@ def _run_acpype(spec: LigandSpec, ff: ForceField, mol2: Path, charge: int, log: 
     return itp.read_text()
 
 
-def _cgenff_penalties(str_text: str) -> tuple[float, float]:
-    m = re.search(r"param penalty=\s*([\d.]+)\s*;\s*charge penalty=\s*([\d.]+)", str_text)
-    return (float(m.group(1)), float(m.group(2))) if m else (0.0, 0.0)
+def _cgenff_penalties(str_text: str) -> tuple[float, float] | None:
+    """(param, charge) penalties from a CGenFF stream file, or None if not found."""
+    m = re.search(r"param\s+penalty\s*=\s*([\d.]+)\s*;\s*charge\s+penalty\s*=\s*([\d.]+)", str_text, re.I)
+    return (float(m.group(1)), float(m.group(2))) if m else None
 
 
 def _run_cgenff(
@@ -239,7 +241,17 @@ def _run_cgenff(
         str_path.write_text(Path(spec.str_file).read_text())
     else:
         str_path.write_text(_cgenff_stdout(os.environ.get("CGENFF_BIN", "cgenff"), mol2, wd, log))
-    pp, cp = _cgenff_penalties(str_path.read_text())
+    penalties = _cgenff_penalties(str_path.read_text())
+    if penalties is None:
+        # An unparseable header must not silently pass the quality gate.
+        if not accept_high_penalty:
+            raise LigandError(
+                f"{spec.resname}: no 'param penalty= ; charge penalty=' line in {str_path.name}; "
+                "cannot assess CGenFF quality (pass --accept-high-penalty to proceed anyway)"
+            )
+        warnings.append(f"{spec.resname}: CGenFF penalties unknown (unparseable .str header)")
+        penalties = (0.0, 0.0)
+    pp, cp = penalties
     if max(pp, cp) > CGENFF_PENALTY_LIMIT and not accept_high_penalty:
         raise LigandError(
             f"{spec.resname}: CGenFF penalties param={pp} charge={cp} > "
@@ -248,6 +260,10 @@ def _run_cgenff(
     if max(pp, cp) > 10:
         warnings.append(f"{spec.resname}: CGenFF penalties param={pp} charge={cp} - validate")
     conv = os.environ.get("CGENFF2GMX", "cgenff_charmm2gmx_py3_nx2.py")
+    # Run from params/<RES>, so a bare script name must be resolved on PATH first.
+    conv = shutil.which(conv) or conv
+    if not Path(conv).is_file():
+        raise ToolError(f"CGenFF converter '{conv}' not found; set CGENFF2GMX to its absolute path")
     run([sys.executable, conv, spec.resname, mol2.name, str_path.name, str(ff_dir)], wd, log)
     stem = spec.resname.lower()
     itp, prm = wd / f"{stem}.itp", wd / f"{stem}.prm"
@@ -276,13 +292,23 @@ def parameterise(
     params_root: Path,
     allow_auto: bool = False,
     accept_high_penalty: bool = False,
+    refresh: bool = False,
 ) -> LigandParams:
     wd = params_root / spec.resname
     meta_path = wd / "meta.json"
+    fingerprint = _spec_fingerprint(spec)
     if meta_path.exists():
         meta = json.loads(meta_path.read_text())
         assert_same(ff, meta["forcefield"], f"cached parameters {wd}")
-        return _load(wd, meta)
+        if meta.get("spec_fingerprint") != fingerprint:
+            if not refresh:
+                raise LigandError(
+                    f"{spec.resname}: the manifest's SMILES/charge/SDF/str changed since {wd} was built; "
+                    "rebuild with --force to re-parameterise (every system using it is rebuilt)"
+                )
+            shutil.rmtree(wd)
+        else:
+            return _load(wd, meta)
 
     wd.mkdir(parents=True, exist_ok=True)
     log = wd / "param.log"
@@ -303,8 +329,16 @@ def parameterise(
     atoms = topo.itp_atoms(mol_text)
     if len(atoms) != mol.GetNumAtoms():
         raise LigandError(f"{spec.resname}: itp has {len(atoms)} atoms, template {mol.GetNumAtoms()}")
+    # Poses are written in template order with itp names, so the orders must agree exactly
+    # (a server-generated .str can list atoms in a different order than our mol2).
+    template_names = [a.GetProp("_Name") for a in mol.GetAtoms()]
+    if [a["name"] for a in atoms] != template_names:
+        raise LigandError(
+            f"{spec.resname}: itp atom order differs from the template; regenerate the .str "
+            "from params/<RES>/template.mol2 so coordinates map onto the right atoms"
+        )
     q = sum(a["charge"] for a in atoms)
-    if abs(q - charge) > 0.01:
+    if abs(q - charge) > 1e-3:  # same tolerance as step F's integer-charge gate
         raise LigandError(f"{spec.resname}: itp net charge {q:.3f} != formal charge {charge}")
     (wd / f"{spec.resname}.itp").write_text(mol_text + topo.posre_block(mol_text))
     (wd / "params.json").write_text(json.dumps(params))
@@ -318,9 +352,22 @@ def parameterise(
         "warnings": warnings,
         "template_sha256": hashlib.sha256((wd / "template.sdf").read_bytes()).hexdigest(),
         "spec": spec.__dict__,
+        "spec_fingerprint": fingerprint,
     }
     meta_path.write_text(json.dumps(meta, indent=2))
     return _load(wd, meta)
+
+
+def _spec_fingerprint(spec: LigandSpec) -> str:
+    """Hash of everything that defines a ligand's parameters, including file contents."""
+    h = hashlib.sha256(
+        json.dumps(
+            {k: v for k, v in spec.__dict__.items() if k not in ("sdf", "str_file")}, sort_keys=True, default=str
+        ).encode()
+    )
+    for f in (spec.sdf, spec.str_file):
+        h.update(Path(f).read_bytes() if f and Path(f).exists() else b"-")
+    return h.hexdigest()
 
 
 def _load(wd: Path, meta: dict) -> LigandParams:
