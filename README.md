@@ -1,116 +1,134 @@
 # gromatrix
 
-Takes PDB files of enzymes docked with targets and turns them into a GROMACS simulation **matrix**
-(each enzyme alone, each target alone, and every enzyme + target complex). One forcefield is locked
-per batch and checked at every step.
+**gromatrix** is a general-purpose, target-agnostic pipeline that turns experimental or docked
+structures into a GROMACS simulation **matrix**: every receptor alone, every target alone, and every
+receptor + target complex. Targets can be small molecules, cofactors or other proteins. It works
+from any PDB/mmCIF input: single chains, hetero-oligomers, multi-copy asymmetric units, and
+symmetry-generated biological assemblies. One forcefield (AMBER or CHARMM family) is locked per batch
+and enforced at every step, so all systems in a comparison are built with identical physics.
+
+Nothing in the algorithms refers to a particular protein, chain, ligand or residue number. Every
+decision is driven by the deposition metadata, geometry and the user's declared targets.
+
+## Problems it solves, for any structure
+
+| Problem in real deposits | How gromatrix handles it (step) |
+|---|---|
+| The asymmetric unit is not the biological unit; copies differ in which ligands they hold | Enumerates every deposited assembly *and* every stoichiometric, interface-connected unit of the AU; ranks them by completeness against the declared targets (C) |
+| Ligands/cofactors must stay with the subunit they bind | Distance-based HET→chain assignment (most heavy-atom contacts within a cutoff) (C) |
+| mmCIF `label_asym_id` vs author chain IDs (OpenMM/PDBFixer use label IDs) | Every chain mapped back to author IDs before anything else (B) |
+| Alternate conformers | Primary by occupancy; symmetry-aware RMSD decides whether conformers are distinct; distinct poses branch the matrix; coordinates are never averaged (B, C) |
+| Missing atoms, short loops, long disordered gaps | Heavy atoms and loops ≤ `--max-loop` built; longer gaps left open and split with TER so no tool bonds across them (B) |
+| Crystallisation additives, hydrogens, waters | Stripped by configurable policy; H rebuilt later by the forcefield's own tools (B, F) |
+| Is the structure physically sane before MD? | Two-stage restrained OpenMM minimisation with explosion/distortion/chain-break/clash/pocket-collapse gates (D) |
+| Is the experimental unit consistent with the predicted fold? | AlphaFold DB comparison by sequence alignment: RMSD (all/confident core), TM-score, Cα-lDDT (E) |
+| Mixing forcefields across a comparison | Batch-wide forcefield lock checked by every command and stamped on every artefact (F) |
+| Ligand topologies differing between apo/holo/complex systems | One parameter set per ligand per batch (acpype/GAFF2 or CGenFF); every pose mapped onto it (F) |
+
+## Pipeline
+
+| Step | Command | What it does |
+|---|---|---|
+| lock | `gmxprep-gmx lock` | fix the forcefield for the batch (`amber`, `amber99sb-ildn-tip4pew`, `amber14sb`, `amber19sb`, `charmm`) |
+| A | `gmxprep-fetch` | RCSB download by ID, full-text or UniProt search; sha256-verified cache |
+| B | `gmxprep-fix` | PDBFixer clean-up, author chain IDs, gap policy, altloc analysis |
+| C | `gmxprep-extract` | choose the sub-unit and slice `enzyme` / `target_<T>` / `complex_<T>` |
+| D | `gmxprep-relax` | OpenMM integrity relaxation with failure labels |
+| E | `gmxprep-afcompare` | AlphaFold DB comparison per protein chain |
+| F | `gmxprep-gmx plan / build / verify / smoke` | topologies, boxes, solvent, ions, `em.tpr`, `run.sh`, smoke test |
+
+Every command takes `--batch-dir`, prints **one JSON line** (`{"ok": ..., ...}`) and exits non-zero on
+failure. Verbose tool output goes to log files. Full flags: `.claude/skills/gromatrix/references/cli.md`.
+An agent skill (`.claude/skills/gromatrix/SKILL.md`) routes an AI agent through the same commands.
+
+## Validation
+
+The algorithms are general; these datasets are used to **stress-test** them:
+
+* **Regression fixture: 1XVP** (`tests/data/1XVP.cif.gz`). A multi-copy asymmetric unit in which
+  one ligand is bound to only one of two copies, the ligand is modelled with two alternate
+  conformers, and five deposited assemblies compete. It exercises completeness-first unit
+  selection, label→author chain remapping and the altloc policy in a single small file. It runs
+  offline in the test suite.
+* **Benchmark panel: 82 human PXR/CAR crystal structures.** Every X-ray entry of human PXR
+  (UniProt O75469) and/or human CAR (Q14994), run through steps A–E. Results, timings and the
+  anomalies encountered are in [`benchmarks/pxr_car_validation.md`](benchmarks/pxr_car_validation.md).
 
 ## Repository layout
 
 ```
 gromatrix/
 ├── pyproject.toml / environment.yml
-├── examples/manifest.yaml            # matrix definition consumed by [F]
+├── examples/manifest.yaml            # matrix definition consumed by step F
+├── benchmarks/                       # validation reports on real structure panels
 ├── src/gmxprep/
-│   ├── forcefields.py   # FF registry (amber99sb-ildn, amber14sb, amber19sb, charmm36m) + batch lock
-│   ├── pdbio.py         # dependency-free PDB/GRO I/O, residue classification
-│   ├── gmx.py           # logged subprocess wrappers, .ff dir discovery, ions.itp parsing
-│   ├── topology.py      # [ atomtypes ] split/merge, moleculetype normalisation, topol.top writer
-│   ├── ligands.py       # ligand router: acpype/GAFF2 (AMBER) | CGenFF (CHARMM), cache, pose mapping
-│   ├── checks.py        # [F] safety checks: top/gro atom walk, charge, named index, EM/MD log parsing
-│   ├── mdp.py           # em/nvt/npt/md mdp with FF-specific non-bonded settings
-│   ├── gmx_prep.py      # [F] CLI: lock / plan / build / verify
 │   ├── net.py           # stdlib HTTP with retries + sha256 download cache
-│   ├── fetch.py         # [A] RCSB fetch: IDs, full-text or UniProt search; hash-checked cache
+│   ├── fetch.py         # [A] RCSB fetch: IDs, full-text or UniProt search
 │   ├── structure.py     # mmCIF/PDB metadata: entities, assemblies, operators, label->auth chains
 │   ├── altlocs.py       # alternate-conformer policy (primary by occupancy, symmetry-aware RMSD, no averaging)
 │   ├── fix.py           # [B] PDBFixer clean-up
 │   ├── extract.py       # [C] assembly/AU candidates, ligand mapping, completeness scoring, matrix slicing
 │   ├── relax.py         # [D] OpenMM two-stage restrained minimisation + integrity gates
-│   └── afdb.py          # [E] AFDB comparison: RMSD (all/core), TM-score, Cα-lDDT
-├── tests/test_core.py, test_extract.py, data/1XVP.cif.gz (benchmark)
-└── .claude/skills/gromatrix/
-    ├── SKILL.md                      # operational router (what to run, in what order)
-    └── references/                   # loaded only when needed
-        ├── cli.md  forcefields.md  troubleshooting.md
+│   ├── afdb.py          # [E] AFDB comparison: RMSD (all/core), TM-score, Cα-lDDT
+│   ├── forcefields.py   # FF registry + batch lock
+│   ├── ligands.py       # ligand router: acpype/GAFF2 (AMBER) | CGenFF (CHARMM), cache, pose mapping
+│   ├── topology.py      # [ atomtypes ] split/merge, moleculetype normalisation, topol.top writer
+│   ├── checks.py        # [F] safety checks: top/gro atom walk, charge, named index, EM/MD log parsing
+│   ├── mdp.py           # em/nvt/npt/md mdp with FF-specific non-bonded settings
+│   ├── gmx.py           # logged subprocess wrappers, .ff dir discovery, ions.itp parsing
+│   ├── pdbio.py         # dependency-free PDB/GRO I/O, residue classification
+│   └── gmx_prep.py      # [F] CLI: lock / plan / build / verify / smoke
+├── tests/                # unit tests + offline end-to-end regression (tests/data/)
+└── .claude/skills/gromatrix/         # agent skill: SKILL.md router + references/
 ```
 
 ## Batch directory (created by the pipeline)
 
 ```
 <batch>/
-├── forcefield.lock.json          # single source of truth for the FF
-├── raw/ fixed/ units/ relaxed/   # outputs of A-D
-├── af_report.csv                 # E
+├── forcefield.lock.json          # single source of truth for the forcefield
+├── raw/ fixed/ units/ relaxed/   # outputs of A-D (one entry per structure ID)
+├── af/ af_report.csv afdb/       # E: per-chain metrics, superposed models, cached AF models
 ├── params/<RES>/                 # one parameter set per ligand/cofactor, shared by all systems
-├── systems/<ID>/                 # E1, T1, E1__T1 ... each with topol.top, solv_ions.gro, em.tpr, mdp/
+├── systems/<ID>/                 # E1, T1, E1__T1 ...: topol.top, solv_ions.gro, index.ndx, em.tpr, run.sh
 └── matrix.json
 ```
-
-## CLI contracts
-
-Every command takes `--batch-dir`, prints **one JSON line** to stdout (`{"ok": ..., ...}`) and exits
-non-zero on failure; verbose tool output goes to log files. Steps C-F read the forcefield from the lock.
-
-| Step | Command | Key arguments |
-|---|---|---|
-| lock | `gmxprep-gmx lock` | `--forcefield {amber,amber99sb-ildn,amber99sb-ildn-tip4pew,amber14sb,amber19sb,charmm,charmm36m}` |
-| A | `gmxprep-fetch` | `--ids 1TQN 3QM4` / `--query TEXT` / `--uniprot ACC`, `--method xray`, `--max-resolution`, `--format {cif,pdb,both}`, `--check-updates` |
-| B | `gmxprep-fix` | `--in raw --out fixed`, `--max-loop 8`, `--waters {none,ligand-shell,shell,all}`, `--keep-het {all,none,LIST}` |
-| C | `gmxprep-extract` | `--targets CID`, `--expect F15:1`, `--assembly {auto,none,N}`, `--ligand-cutoff 4.5`, `--min-contacts 10` |
-| D | `gmxprep-relax` | `--solvent {auto,gbn2,rf}`, `--restraint-k 1000`, `--max-rmsd 2.5`, `--max-drop 100`, `--pocket-cutoff 5`, `--platform` |
-| E | `gmxprep-afcompare` | `--uniprot C:P19793`, `--plddt-min 70`, `--min-length 30`, `--tm-min 0.8`, `--lddt-min 0.7` |
-| F | `gmxprep-gmx plan / build / verify / smoke` | `--manifest`, `--only`, `--box`, `--pad`, `--conc`, `--temp`, `--md-ns`, `--gmx` |
-
-All steps are implemented; each module's docstring documents its algorithm. Full flags: `.claude/skills/gromatrix/references/cli.md`.
-
-## [C] and the 1XVP benchmark
-
-1XVP (CAR/RXR heterodimer with SRC1 peptides) has two copies in the asymmetric unit, but CITCO
-(`CID`) is bound to CAR chain D only. Author assembly 1 (A,B,E,F) therefore has no CITCO.
-`gmxprep-extract --targets CID` builds every assembly and every stoichiometric AU unit, maps each
-HET to the chain it contacts most, and ranks completeness first. It selects assembly 2
-(C,D,G,H; F15 on C, CID on D), and gets the same answer (`au-CDGH`) with assembly records
-ignored. The deposit also models CITCO as two alternate conformers. Step B keeps A and reports it.
-
-### Alternate conformers (1XVP CITCO)
-
-1XVP has no conformer C, only A and B (27 atoms each, occupancy 0.50, on CID D1003). Their raw RMSD
-is 1.03 Å, but almost all of it is a 180° flip of the para-chlorophenyl ring, which only relabels
-C7↔C8 and C12↔C13. The symmetry-corrected RMSD is 0.38 Å, within the coordinate error at 2.6 Å
-resolution. Averaging A and B would shrink ring C–C bonds from 1.44 to 0.70 Å. Policy: highest
-occupancy → primary; every conformer analysed and kept; the matrix branches (`complex_<T>_alt<L>`)
-only for distinct poses (`--altloc auto`) or on request (`--altloc branch`); never average.
-
-## Patterns adopted from SQUIP (ESS-MimerAI/SQUIP)
-
-| SQUIP pattern | Here |
-|---|---|
-| `test_mode` short runs before production | `gmxprep-gmx smoke`: EM + restrained NVT with logs parsed to pass/fail |
-| `check_warnings.sh` (LINCS, fatal, "Finished mdrun") | `checks.scan_md_log`, zero LINCS tolerance in the smoke test |
-| `verify_systems.py` (`[ molecules ]` vs `.gro`, water model) | `checks.top_vs_gro`: full atom walk + integer/zero charge gates in build and verify |
-| Absolute `#include` rewriting for portability | relative `<ff>.ff` symlink in each system dir |
-| `-water select` + stdin for TIP4P-Ew | `pdb2gmx -water none`, water from our own `topol.top`; `amber99sb-ildn-tip4pew` registry entry |
-| TaskBlaster per-task caching | content-hash `inputs_sha` resume |
-| `grompp -t prev.cpt` chaining | generated `run.sh` with `-r`/`-t` |
-| *Avoided:* blanket `-maxwarn 1`, `echo 15 \| genion`, per-stage hand-written mdp drift, Parrinello-Rahman straight after NVT, hand-adjusted residue charges | `-maxwarn 0` (ions stage tolerates 1 only if charged), groups selected by name, single mdp generator, C-rescale, integer-charge gate |
-
-## [F] in one paragraph
-
-`build` expands the manifest into systems, refuses an incomplete matrix, and for each system: runs
-`pdb2gmx -ignh -merge all` on the protein chains; parameterises every non-ion HET residue **once per batch**
-(acpype/GAFF2/AM1-BCC for AMBER, CGenFF + `cgenff_charmm2gmx` for CHARMM, with penalty gating); maps
-each pose onto the cached template so every system shares identical ligand topologies; maps crystal ions
-to the FF's `ions.itp` moleculetypes; merges ligand `[ atomtypes ]` ahead of all moleculetypes; writes
-`topol.top`; then `editconf`, `solvate`, `genion` and a **zero-warning `grompp`** of `em.tpr` as the
-integrity gate. `verify` re-checks the lock, every parameter cache, every `topol.top` include and every
-mdp's non-bonded block.
 
 ## Quick start
 
 ```bash
 conda env create -f environment.yml && conda activate gmxprep
-gmxprep-gmx lock  --batch-dir runs/cyp --forcefield amber
-gmxprep-gmx plan  --batch-dir runs/cyp --manifest examples/manifest.yaml
-gmxprep-gmx build --batch-dir runs/cyp --manifest examples/manifest.yaml
-gmxprep-gmx verify --batch-dir runs/cyp
+B=runs/my_study
+gmxprep-gmx lock     --batch-dir $B --forcefield amber
+gmxprep-fetch        --batch-dir $B --ids <PDB IDs>            # or --uniprot <ACC> --method xray
+gmxprep-fix          --batch-dir $B
+gmxprep-extract      --batch-dir $B --targets <LIGAND RESNAME> # e.g. the drug; cofactors via --expect
+gmxprep-relax        --batch-dir $B
+gmxprep-afcompare    --batch-dir $B
+# write a manifest pairing units/<ID>/enzyme.pdb, target_<T>.pdb, complex_<T>.pdb (see examples/)
+gmxprep-gmx build    --batch-dir $B --manifest manifest.yaml
+gmxprep-gmx verify   --batch-dir $B && gmxprep-gmx smoke --batch-dir $B
 ```
+
+## Design notes
+
+* **Step F in one paragraph.** `build` expands the manifest into systems and refuses an incomplete
+  matrix. For each system it:
+  1. runs `pdb2gmx -ignh -merge all` on the protein chains;
+  2. parameterises every non-ion HET once per batch, with acpype/GAFF2/AM1-BCC for AMBER or
+     CGenFF + `cgenff_charmm2gmx` for CHARMM (penalty-gated);
+  3. maps each pose onto the cached template;
+  4. maps crystal ions to the forcefield's `ions.itp`;
+  5. merges ligand `[ atomtypes ]`;
+  6. writes `topol.top`;
+  7. runs `editconf`, `solvate` and `genion`, with atom-walk and charge gates before and after;
+  8. writes a named `index.ndx`, a **zero-warning `grompp`** of `em.tpr`, and `run.sh`.
+* **Patterns adopted from SQUIP** (ESS-MimerAI/SQUIP), each in a stricter form:
+  * test-mode short runs became `smoke`;
+  * log scanning (LINCS, fatal errors, "Finished mdrun") became `checks.scan_md_log`;
+  * `[ molecules ]` vs `.gro` checks became a full atom walk with charge gates;
+  * absolute includes became a relative forcefield symlink;
+  * TaskBlaster caching became an input-hash resume;
+  * `-t` checkpoint chaining is built into `run.sh`.
+
+  Avoided: blanket `-maxwarn 1`, genion group numbers, hand-adjusted residue charges.

@@ -1,4 +1,5 @@
 """Steps B/C. The 1XVP benchmark needs OpenMM + PDBFixer; the rest is pure NumPy/SciPy."""
+
 import argparse
 import gzip
 import json
@@ -24,8 +25,10 @@ def test_oper_expression():
 
 
 def test_compose_applies_right_to_left():
-    ops = {"1": {"R": [[1, 0, 0], [0, 1, 0], [0, 0, 1]], "t": [1, 0, 0]},
-           "2": {"R": [[0, -1, 0], [1, 0, 0], [0, 0, 1]], "t": [0, 0, 0]}}  # 90° about z
+    ops = {
+        "1": {"R": [[1, 0, 0], [0, 1, 0], [0, 0, 1]], "t": [1, 0, 0]},
+        "2": {"R": [[0, -1, 0], [1, 0, 0], [0, 0, 1]], "t": [0, 0, 0]},
+    }  # 90° about z
     op = compose(ops, ("1", "2"))  # rotate, then translate
     x = np.array(op["R"]) @ np.array([1.0, 0, 0]) + np.array(op["t"])
     assert np.allclose(x, [1, 1, 0]) and not is_identity(op)
@@ -57,16 +60,32 @@ def _residues(atoms):
 
 def test_ligand_only_in_second_copy_selects_second_copy(tmp_path):
     # Two copies of a receptor (entity 1: A,C) + partner (entity 2: B,D); ligand bound to D only.
-    atoms = (_chain("A", 0) + _chain("C", 100) + [replace_y(a, 4.0) for a in _chain("B", 0)]
-             + [replace_y(a, 4.0) for a in _chain("D", 100)] + _lig("D", 103, 8.0))
+    atoms = (
+        _chain("A", 0)
+        + _chain("C", 100)
+        + [replace_y(a, 4.0) for a in _chain("B", 0)]
+        + [replace_y(a, 4.0) for a in _chain("D", 100)]
+        + _lig("D", 103, 8.0)
+    )
     fixed = tmp_path / "fixed"
     fixed.mkdir()
     write_pdb(fixed / "TOY.pdb", atoms)
-    (fixed / "TOY.meta.json").write_text(json.dumps(
-        {"assemblies": [], "operators": {}, "chain_entity": {"A": "1", "C": "1", "B": "2", "D": "2"}}))
-    a = argparse.Namespace(targets="LIG", target_chains=None, expect=None, assembly="auto", ligand_cutoff=4.5,
-                           contact_cutoff=5.0, min_contacts=2, max_chains=12, unit=None, allow_incomplete=False,
-                           altloc="auto")
+    (fixed / "TOY.meta.json").write_text(
+        json.dumps({"assemblies": [], "operators": {}, "chain_entity": {"A": "1", "C": "1", "B": "2", "D": "2"}})
+    )
+    a = argparse.Namespace(
+        targets="LIG",
+        target_chains=None,
+        expect=None,
+        assembly="auto",
+        ligand_cutoff=4.5,
+        contact_cutoff=5.0,
+        min_contacts=2,
+        max_chains=12,
+        unit=None,
+        allow_incomplete=False,
+        altloc="auto",
+    )
     out = extract_one(fixed / "TOY.pdb", tmp_path / "units", a)
     assert out["selected"] == "au-CD" and out["inventory"] == {"LIG": 1}
     files = set(out["files"])
@@ -78,16 +97,21 @@ def test_ligand_only_in_second_copy_selects_second_copy(tmp_path):
 def test_assign_hets_prefers_most_contacts():
     res = _residues(_chain("A", 0) + [replace_y(a, 10.0) for a in _chain("B", 0)] + _lig("B", 1.0, 7.5))
     assignment, orphans = assign_hets(res, 4.5)
-    (i, info), = assignment.items()
+    ((i, info),) = assignment.items()
     assert info["chain"] == "B" and not orphans
 
 
 def test_assembly_copies_get_fresh_chain_ids():
     au = _residues(_chain("A", 0) + _lig("A", 1.0, 3.0))
-    asm = {"id": "1", "author_defined": True,
-           "gens": [{"polymer_chains": ["A"], "het_residues": [["A", "LIG", 500, ""]], "opers": [("1",), ("2",)]}]}
-    ops = {"1": {"R": [[1, 0, 0], [0, 1, 0], [0, 0, 1]], "t": [0, 0, 0]},
-           "2": {"R": [[1, 0, 0], [0, 1, 0], [0, 0, 1]], "t": [0, 50, 0]}}
+    asm = {
+        "id": "1",
+        "author_defined": True,
+        "gens": [{"polymer_chains": ["A"], "het_residues": [["A", "LIG", 500, ""]], "opers": [("1",), ("2",)]}],
+    }
+    ops = {
+        "1": {"R": [[1, 0, 0], [0, 1, 0], [0, 0, 1]], "t": [0, 0, 0]},
+        "2": {"R": [[1, 0, 0], [0, 1, 0], [0, 0, 1]], "t": [0, 50, 0]},
+    }
     cand = build_assembly(asm, au, ops)
     assert cand.chains == ["A", "B"]
     lig = [r for r in cand.residues if r.resname == "LIG"]
@@ -95,8 +119,12 @@ def test_assembly_copies_get_fresh_chain_ids():
 
 
 def test_au_units_require_connected_interfaces():
-    au = _residues(_chain("A", 0) + [replace_y(a, 4.0) for a in _chain("B", 0)]
-                   + _chain("C", 100) + [replace_y(a, 4.0) for a in _chain("D", 100)])
+    au = _residues(
+        _chain("A", 0)
+        + [replace_y(a, 4.0) for a in _chain("B", 0)]
+        + _chain("C", 100)
+        + [replace_y(a, 4.0) for a in _chain("D", 100)]
+    )
     contacts = chain_contacts(au, 5.0)
     units = au_units(au, {"A": "1", "C": "1", "B": "2", "D": "2"}, contacts, 2)
     assert sorted(units) == [("A", "B"), ("C", "D")]  # A+D and C+B are not in contact
@@ -136,6 +164,7 @@ def test_1xvp_benchmark(tmp_path):
     # Step D: the selected unit relaxes without implosion/explosion; the ligand-only file is skipped.
     pytest.importorskip("openmm")
     from gmxprep import relax
+
     relax.main(["--batch-dir", str(tmp_path), "--files", "enzyme.pdb", "target_CID.pdb", "--platform", "CPU"])
     rj = json.loads((tmp_path / "relaxed" / "1XVP" / "relax.json").read_text())["files"]
     assert rj["enzyme.pdb"]["status"] == "ok" and rj["enzyme.pdb"]["rmsd_heavy"] < 2.5
@@ -143,29 +172,103 @@ def test_1xvp_benchmark(tmp_path):
 
 
 def _alt_group(xa, xb, elements, names):
-    return {"chain": "A", "resname": "LIG", "resseq": 500, "icode": "", "primary": "A",
-            "alts": {"A": {"occ": 0.5, "atoms": dict(zip(names, xa.tolist())), "elements": dict(zip(names, elements))},
-                     "B": {"occ": 0.5, "atoms": dict(zip(names, xb.tolist())), "elements": dict(zip(names, elements))}}}
+    return {
+        "chain": "A",
+        "resname": "LIG",
+        "resseq": 500,
+        "icode": "",
+        "primary": "A",
+        "alts": {
+            "A": {"occ": 0.5, "atoms": dict(zip(names, xa.tolist())), "elements": dict(zip(names, elements))},
+            "B": {"occ": 0.5, "atoms": dict(zip(names, xb.tolist())), "elements": dict(zip(names, elements))},
+        },
+    }
 
 
 def test_altloc_policy_ring_flip_shift_and_average():
     from gmxprep import altlocs
+
     ang = np.radians(np.arange(6) * 60)
     ring = np.c_[1.39 * np.cos(ang), 1.39 * np.sin(ang), np.zeros(6)]
     names, el = [f"C{i}" for i in range(6)], ["C"] * 6
-    flipped = ring[[0, 5, 4, 3, 2, 1]]                     # same positions, permuted labels
+    flipped = ring[[0, 5, 4, 3, 2, 1]]  # same positions, permuted labels
     g = altlocs.analyse(_alt_group(ring, flipped, el, names), 0.5)
     assert g["analysis"]["B"]["rmsd"] > 1.0 and g["analysis"]["B"]["sym_rmsd"] < 1e-6 and not g["distinct"]
-    shifted = ring + [2.0, 0, 0]                           # a genuinely different pose
+    shifted = ring + [2.0, 0, 0]  # a genuinely different pose
     g = altlocs.analyse(_alt_group(ring, shifted, el, names), 0.5)
     assert g["distinct"] and g["analysis"]["B"]["geometry_ok"]
-    averaged = (ring + flipped) / 2                        # what "conformer C = mean(A,B)" would be
+    averaged = (ring + flipped) / 2  # what "conformer C = mean(A,B)" would be
     g = altlocs.analyse(_alt_group(ring, averaged, el, names), 0.5)
     assert not g["analysis"]["B"]["geometry_ok"] and not g["distinct"]
 
 
 def test_resolve_picks_highest_occupancy():
     from gmxprep import altlocs
-    a = lambda occ, x: Atom("HETATM", "C1", "LIG", "A", 1, "", x, 0.0, 0.0, "C", 10.0, occ)
+
+    def a(occ, x):
+        return Atom("HETATM", "C1", "LIG", "A", 1, "", x, 0.0, 0.0, "C", 10.0, occ)
+
     atoms, groups = altlocs.resolve([(a(0.3, 0.0), "A"), (a(0.7, 3.0), "B")])
     assert groups[0]["primary"] == "B" and atoms[0].x == 3.0
+
+
+def test_het_follows_the_chain_it_binds_not_its_label(tmp_path):
+    """Deposits can label a ligand with one chain while it sits in another chain's
+    pocket. Assembly membership must follow geometry (seen in a PXR/CAR benchmark entry)."""
+    lig = _lig("D", 1.0, 7.5)  # labelled D, but next to chain B
+    atoms = (
+        _chain("A", 0)
+        + [replace_y(a, 4.0) for a in _chain("B", 0)]
+        + _chain("C", 100)
+        + [replace_y(a, 4.0) for a in _chain("D", 100)]
+        + lig
+    )
+    fixed = tmp_path / "fixed"
+    fixed.mkdir()
+    write_pdb(fixed / "TOY.pdb", atoms)
+    ident = {"1": {"R": [[1, 0, 0], [0, 1, 0], [0, 0, 1]], "t": [0, 0, 0]}}
+    meta = {
+        "operators": ident,
+        "chain_entity": {"A": "1", "C": "1", "B": "2", "D": "2"},
+        "assemblies": [
+            {
+                "id": "1",
+                "author_defined": True,
+                "gens": [{"polymer_chains": ["A", "B"], "het_residues": [], "opers": [["1"]]}],
+            },
+            {
+                "id": "2",
+                "author_defined": True,
+                "gens": [{"polymer_chains": ["C", "D"], "het_residues": [["D", "LIG", 500, ""]], "opers": [["1"]]}],
+            },
+        ],
+    }
+    (fixed / "TOY.meta.json").write_text(json.dumps(meta))
+    a = argparse.Namespace(
+        targets="LIG",
+        target_chains=None,
+        expect=None,
+        assembly="auto",
+        ligand_cutoff=4.5,
+        contact_cutoff=5.0,
+        min_contacts=2,
+        max_chains=12,
+        unit=None,
+        allow_incomplete=False,
+        altloc="auto",
+    )
+    out = extract_one(fixed / "TOY.pdb", tmp_path / "units", a)
+    assert out["selected"] == "assembly-1" and out["inventory"] == {"LIG": 1}
+    assert any("binds B" in w for w in out["warnings"])
+
+
+def test_altloc_far_from_unit_is_not_a_conformer():
+    """An 'altloc' far from the unit is an alternate *copy* stored as a conformer
+    (seen in a benchmark deposit). The contact gate must reject it."""
+    from gmxprep.extract import clash_report
+
+    res = _residues(_chain("A", 0) + _lig("A", 1.0, 3.0) + _lig("A", 60.0, 40.0, seq=501))
+    env = [r for r in res if r.kind == "polymer"]
+    near, far = [r for r in res if r.resname == "LIG"]
+    assert clash_report(near, env)["contacts"] > 0
+    assert clash_report(far, env)["contacts"] == 0

@@ -1,6 +1,6 @@
 """[D] OpenMM structural-integrity relaxation of the extracted matrix files.
 
-    gmxprep-relax --batch-dir B [--in units] [--out relaxed] [--ids 1XVP ...]
+    gmxprep-relax --batch-dir B [--in units] [--out relaxed] [--ids 1ABC ...]
                   [--files enzyme.pdb complex_*.pdb target_*.pdb] [--forcefield amber|charmm]
                   [--solvent auto|gbn2|rf] [--restraint-k 1000] [--max-iter 2000] [--free-iter 1000]
                   [--max-rmsd 2.5] [--max-drop 100] [--pocket-cutoff 5.0] [--platform auto|CPU|CUDA|OpenCL]
@@ -31,6 +31,7 @@ This is an integrity check, not equilibration. Per file:
 Relaxed files keep the input name under <out>/<ID>/. Hydrogens are stripped
 again, because step F rebuilds them with pdb2gmx.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -48,8 +49,10 @@ import numpy as np
 from .forcefields import ForcefieldMismatch, load_lock
 from .pdbio import PROTEIN_RES, Atom, read_pdb, write_pdb
 
-FF_FILES = {"amber": {"gbn2": ["amber14-all.xml", "implicit/gbn2.xml"], "rf": ["amber14-all.xml"]},
-            "charmm": {"rf": ["charmm36.xml"]}}
+FF_FILES = {
+    "amber": {"gbn2": ["amber14-all.xml", "implicit/gbn2.xml"], "rf": ["amber14-all.xml"]},
+    "charmm": {"rf": ["charmm36.xml"]},
+}
 CUTOFF_NM = 1.6
 CA_BREAK = 4.2
 
@@ -112,8 +115,12 @@ def relax_file(path: Path, out_path: Path, family: str, a) -> dict:
         fixer.addMissingAtoms()
     model = app.Modeller(fixer.topology, fixer.positions)
     model.addHydrogens(ff, pH=a.ph)
-    system = ff.createSystem(model.topology, nonbondedMethod=app.CutoffNonPeriodic,
-                             nonbondedCutoff=CUTOFF_NM * unit.nanometer, constraints=None)
+    system = ff.createSystem(
+        model.topology,
+        nonbondedMethod=app.CutoffNonPeriodic,
+        nonbondedCutoff=CUTOFF_NM * unit.nanometer,
+        constraints=None,
+    )
 
     for force in system.getForces():
         force.setForceGroup(1)  # physical terms; restraints added below go to group 2
@@ -140,8 +147,10 @@ def relax_file(path: Path, out_path: Path, family: str, a) -> dict:
     ctx = openmm.Context(system, openmm.VerletIntegrator(0.001), platform)
     ctx.setPositions(model.positions)
     n = model.topology.getNumAtoms()
-    restraint_free = lambda: ctx.getState(getEnergy=True, groups={1}).getPotentialEnergy() \
-        .value_in_unit(unit.kilojoule_per_mole)
+
+    def restraint_free():
+        state = ctx.getState(getEnergy=True, groups={1})
+        return state.getPotentialEnergy().value_in_unit(unit.kilojoule_per_mole)
 
     t0 = time.time()
     e0 = restraint_free()
@@ -153,10 +162,17 @@ def relax_file(path: Path, out_path: Path, family: str, a) -> dict:
     e2 = restraint_free()
     pos2 = np.array(ctx.getState(getPositions=True).getPositions().value_in_unit(unit.nanometer))
 
-    res = {"status": "ok", "n_atoms": n, "n_heavy": len(heavy), "pocket_atoms_restrained": len(pocket),
-           "solvent": solvent, "platform": ctx.getPlatform().getName(),
-           "e_initial_kj_per_atom": round(e0 / n, 2), "e_final_kj_per_atom": round(e2 / n, 2),
-           "seconds": round(time.time() - t0, 1)}
+    res = {
+        "status": "ok",
+        "n_atoms": n,
+        "n_heavy": len(heavy),
+        "pocket_atoms_restrained": len(pocket),
+        "solvent": solvent,
+        "platform": ctx.getPlatform().getName(),
+        "e_initial_kj_per_atom": round(e0 / n, 2),
+        "e_final_kj_per_atom": round(e2 / n, 2),
+        "seconds": round(time.time() - t0, 1),
+    }
     if not (np.isfinite(pos2).all() and math.isfinite(e0) and math.isfinite(e2)):
         res.update(status="failed", failure="explosion", reason="non-finite energy or coordinates")
         return res
@@ -174,8 +190,20 @@ def relax_file(path: Path, out_path: Path, family: str, a) -> dict:
             continue
         r = at.residue
         key = (r.chain.id, int(r.id), (r.insertionCode or "").strip(), at.name)
-        relaxed.append(Atom("ATOM", at.name, r.name, r.chain.id, int(r.id), key[2], *(xyz * 10).tolist(),
-                            at.element.symbol.upper(), bfac.get(key, 0.0), 1.0 if key in bfac else 0.0))
+        relaxed.append(
+            Atom(
+                "ATOM",
+                at.name,
+                r.name,
+                r.chain.id,
+                int(r.id),
+                key[2],
+                *(xyz * 10).tolist(),
+                at.element.symbol.upper(),
+                bfac.get(key, 0.0),
+                1.0 if key in bfac else 0.0,
+            )
+        )
     new_breaks = _ca_breaks(relaxed) - _ca_breaks(poly)
     if len(het_xyz):
         rel_xyz = np.array([[x.x, x.y, x.z] for x in relaxed])
@@ -208,29 +236,40 @@ def _family(a) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="gmxprep-relax", description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        prog="gmxprep-relax", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--batch-dir", type=Path, required=True)
     ap.add_argument("--in", dest="indir", default="units")
     ap.add_argument("--out", default="relaxed")
     ap.add_argument("--ids", nargs="+")
     ap.add_argument("--files", nargs="+", default=["enzyme.pdb", "complex_*.pdb", "target_*.pdb"])
     ap.add_argument("--forcefield", help="amber|charmm; default: the batch lock's family (amber if unlocked)")
-    ap.add_argument("--solvent", default="auto", choices=["auto", "gbn2", "rf"],
-                    help="auto = gbn2 on CUDA/OpenCL, rf on CPU; CHARMM always uses rf")
+    ap.add_argument(
+        "--solvent",
+        default="auto",
+        choices=["auto", "gbn2", "rf"],
+        help="auto = gbn2 on CUDA/OpenCL, rf on CPU; CHARMM always uses rf",
+    )
     ap.add_argument("--ph", type=float, default=7.0)
     ap.add_argument("--restraint-k", type=float, default=1000.0, help="kJ/mol/nm^2 on heavy atoms")
     ap.add_argument("--max-iter", type=int, default=2000, help="stage 1 (restrained) iterations")
     ap.add_argument("--free-iter", type=int, default=1000, help="stage 2 (pocket-restrained) iterations")
     ap.add_argument("--max-rmsd", type=float, default=2.5, help="Å, heavy-atom RMSD gate")
-    ap.add_argument("--max-drop", type=float, default=100.0,
-                    help="kJ/mol/atom; a drop below -this together with RMSD > --max-rmsd = implosion/explosion")
+    ap.add_argument(
+        "--max-drop",
+        type=float,
+        default=100.0,
+        help="kJ/mol/atom; a drop below -this together with RMSD > --max-rmsd = implosion/explosion",
+    )
     ap.add_argument("--pocket-cutoff", type=float, default=5.0, help="Å around HETs kept restrained in stage 2")
     ap.add_argument("--platform", default="auto")
     a = ap.parse_args(argv)
 
     family = _family(a)
-    units = sorted(p for p in (a.batch_dir / a.indir).iterdir() if p.is_dir()) if (a.batch_dir / a.indir).exists() else []
+    units = (
+        sorted(p for p in (a.batch_dir / a.indir).iterdir() if p.is_dir()) if (a.batch_dir / a.indir).exists() else []
+    )
     if a.ids:
         units = [u for u in units if u.name.upper() in {i.upper() for i in a.ids}]
     if not units:
@@ -248,13 +287,23 @@ def main(argv: list[str] | None = None) -> int:
                 (a.batch_dir / a.out / u.name).mkdir(parents=True, exist_ok=True)
                 (a.batch_dir / a.out / u.name / f"{f.stem}.error.txt").write_text(traceback.format_exc())
             report[f.name] = r
-            brief = {k: r.get(k) for k in ("status", "failure", "rmsd_heavy", "drop_kj_per_atom", "pocket_min_dist")
-                     if r.get(k) is not None}
+            brief = {
+                k: r.get(k)
+                for k in ("status", "failure", "rmsd_heavy", "drop_kj_per_atom", "pocket_min_dist")
+                if r.get(k) is not None
+            }
             (failed if r["status"] == "failed" else results).append({"id": u.name, "file": f.name, **brief})
         (a.batch_dir / a.out / u.name).mkdir(parents=True, exist_ok=True)
-        (a.batch_dir / a.out / u.name / "relax.json").write_text(json.dumps(
-            {"forcefield_family": family, "thresholds": {"max_rmsd": a.max_rmsd, "max_drop": a.max_drop},
-             "files": report}, indent=1))
+        (a.batch_dir / a.out / u.name / "relax.json").write_text(
+            json.dumps(
+                {
+                    "forcefield_family": family,
+                    "thresholds": {"max_rmsd": a.max_rmsd, "max_drop": a.max_drop},
+                    "files": report,
+                },
+                indent=1,
+            )
+        )
     print(json.dumps({"ok": not failed, "family": family, "relaxed": results, "failed": failed}))
     return 0 if not failed else 1
 

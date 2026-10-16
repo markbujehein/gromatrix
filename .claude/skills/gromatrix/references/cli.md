@@ -53,7 +53,7 @@ Ligand cache `B/params/<RES>/`: `template.sdf` (atom order is the order used in 
 ## gmxprep-fix (step B, implemented)
 
 ```
-gmxprep-fix --batch-dir B [--in raw] [--out fixed] [--ids 1XVP ...] [--max-loop 8]
+gmxprep-fix --batch-dir B [--in raw] [--out fixed] [--ids 1ABC ...] [--max-loop 8]
             [--waters none|ligand-shell|shell|all] [--water-shell 3.5]
             [--keep-het all|none|RES,RES] [--keep-additives] [--keep-nonstandard]
 ```
@@ -86,9 +86,9 @@ gmxprep-extract --batch-dir B [--in fixed] [--out units] [--ids ...]
 
 | Flag | Meaning |
 |---|---|
-| `--targets` | Ligand residue names that form the "target" of the matrix. `CID@1XVP` scopes a name to one ID. Hard requirement for unit selection. |
+| `--targets` | Ligand residue names that form the "target" of the matrix. `LIG@1ABC` scopes a name to one ID. Hard requirement for unit selection. |
 | `--target-chains` | Author chains of a protein/peptide target (sliced like a ligand target) |
-| `--expect` | Further hard requirements, e.g. `F15:1,HEM:2` (cofactors that must travel with the enzyme) |
+| `--expect` | Further hard requirements, e.g. `COF:1,HEM:2` (cofactors that must travel with the enzyme) |
 | `--assembly` | `auto` = deposited assemblies + AU stoichiometric units; `none` = AU only (docked models); `N` = only assembly N |
 | `--ligand-cutoff` (alias `--het-cutoff`) | Å; a HET is assigned to the chain with the most heavy-atom pairs within this distance |
 | `--contact-cutoff`, `--min-contacts` | Chain–chain interface edge = ≥ `min-contacts` residue pairs within `contact-cutoff` Å |
@@ -107,14 +107,14 @@ instances in the unit), `target_<chains>.pdb`/`complex_<chains>.pdb` for protein
 ## gmxprep-fetch (step A)
 
 ```
-gmxprep-fetch --batch-dir B (--ids 1XVP ... | --query TEXT | --uniprot O75469 Q14994)
+gmxprep-fetch --batch-dir B (--ids 1ABC ... | --query TEXT | --uniprot P12345 ...)
               [--max 25] [--method xray|em|nmr] [--max-resolution 3.0]
               [--format cif|pdb|both] [--out raw] [--check-updates]
 ```
 
 | Flag | Meaning |
 |---|---|
-| `--uniprot` | every entry with a chain mapped to these accessions, best resolution first (human PXR `O75469`, human CAR `Q14994`) |
+| `--uniprot` | every entry with a chain mapped to these accessions, best resolution first |
 | `--query` | RCSB full-text search, by relevance |
 | `--format` | `cif` (default; needed for assemblies in C), `pdb`, `both`. Large entries have no PDB file and report `unavailable`. |
 | `--check-updates` | ask the RCSB Data API for each entry's revision and refetch revised entries |
@@ -148,7 +148,7 @@ files are `skipped`. Per-file details: `relaxed/<ID>/relax.json`.
 
 ```
 gmxprep-afcompare --batch-dir B [--in relaxed] [--ids ...] [--files enzyme.pdb target_*.pdb]
-                  [--uniprot C:P19793,D:Q14994[@ID]] [--plddt-min 70] [--min-length 30]
+                  [--uniprot A:P12345,B:Q67890[@ID]] [--plddt-min 70] [--min-length 30]
                   [--tm-min 0.8] [--lddt-min 0.7] [--out af_report.csv] [--afdb-dir afdb]
 ```
 
@@ -156,6 +156,6 @@ Chain → UniProt via SIFTS (author chain; assembly copies traced through `units
 `--uniprot`. The model comes from the AFDB API, with its version recorded and files hash-cached in
 `afdb/`. Residues are matched by sequence alignment, not numbering. Reported per chain: `rmsd_all`,
 `rmsd_core` (pLDDT ≥ `--plddt-min`), `tm_score` (normalised by experimental length; within 0.003 of
-TM-align on 1XVP), `lddt_ca` (local, superposition-free), identity, coverage, mean pLDDT. Flags:
+TM-align in validation, see `benchmarks/`), `lddt_ca` (local, superposition-free), identity, coverage, mean pLDDT. Flags:
 TM < `--tm-min`, lDDT < `--lddt-min`, identity < 0.9. Chains shorter than `--min-length` are listed
 but not scored. Outputs: `af_report.csv`, `af/<ID>.json`, superposed models `af/<ID>/AF_<chain>_<acc>.pdb`.

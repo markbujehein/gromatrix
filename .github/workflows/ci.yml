@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+  workflow_dispatch:
+
+# Least privilege: CI only reads the repository. No job needs a write token.
+permissions:
+  contents: read
+
+# A newer push to the same branch/PR cancels the run in progress.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIXI_VERSION: v0.82.0
+  # Only trusted branch pushes write the environment cache; PRs (incl. forks) read it.
+  CACHE_WRITE: ${{ github.event_name == 'push' }}
+
+jobs:
+  lint:
+    name: Ruff (lint + format)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
+        with:
+          pixi-version: ${{ env.PIXI_VERSION }}
+          environments: lint          # ruff only: no OpenMM/RDKit download
+          locked: true                # fail if pixi.lock is out of date with pixi.toml
+          cache: true
+          cache-write: ${{ env.CACHE_WRITE }}
+      - run: pixi run --locked -e lint lint
+
+  test:
+    name: Tests (${{ matrix.environment }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # PRs: the canonical Python only. Pushes to main/dev: also the 3.10/3.13 edges.
+        environment: ${{ fromJSON(github.event_name == 'pull_request' && '["default"]' || '["default", "py310", "py313"]') }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
+        with:
+          pixi-version: ${{ env.PIXI_VERSION }}
+          environments: ${{ matrix.environment }}
+          locked: true
+          cache: true
+          cache-write: ${{ env.CACHE_WRITE }}
+      - name: pytest (full suite incl. offline end-to-end regression) with coverage
+        run: pixi run --locked -e ${{ matrix.environment }} test-all
+      - name: Coverage summary
+        if: matrix.environment == 'default'
+        run: pixi run --locked -e default coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload coverage.xml
+        if: matrix.environment == 'default'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          retention-days: 14

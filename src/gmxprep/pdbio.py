@@ -1,20 +1,68 @@
 """Minimal PDB / GRO I/O and residue classification (no heavy dependencies)."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
 
 PROTEIN_RES = {
-    "ALA", "ARG", "ASN", "ASP", "CYS", "GLN", "GLU", "GLY", "HIS", "ILE", "LEU", "LYS",
-    "MET", "PHE", "PRO", "SER", "THR", "TRP", "TYR", "VAL",
-    "HID", "HIE", "HIP", "HSD", "HSE", "HSP", "CYX", "CYM", "ASH", "GLH", "LYN", "ACE", "NME", "NH2",
+    "ALA",
+    "ARG",
+    "ASN",
+    "ASP",
+    "CYS",
+    "GLN",
+    "GLU",
+    "GLY",
+    "HIS",
+    "ILE",
+    "LEU",
+    "LYS",
+    "MET",
+    "PHE",
+    "PRO",
+    "SER",
+    "THR",
+    "TRP",
+    "TYR",
+    "VAL",
+    "HID",
+    "HIE",
+    "HIP",
+    "HSD",
+    "HSE",
+    "HSP",
+    "CYX",
+    "CYM",
+    "ASH",
+    "GLH",
+    "LYN",
+    "ACE",
+    "NME",
+    "NH2",
 }
 WATER_RES = {"HOH", "WAT", "SOL", "TIP3", "DOD", "H2O"}
 # Residue name -> element for monatomic ions.
 ION_RES = {
-    "NA": "NA", "CL": "CL", "K": "K", "MG": "MG", "CA": "CA", "ZN": "ZN",
-    "SOD": "NA", "CLA": "CL", "POT": "K", "CAL": "CA", "ZN2": "ZN",
-    "MN": "MN", "FE": "FE", "FE2": "FE", "CU": "CU", "CU1": "CU", "CO": "CO", "NI": "NI", "CD": "CD",
+    "NA": "NA",
+    "CL": "CL",
+    "K": "K",
+    "MG": "MG",
+    "CA": "CA",
+    "ZN": "ZN",
+    "SOD": "NA",
+    "CLA": "CL",
+    "POT": "K",
+    "CAL": "CA",
+    "ZN2": "ZN",
+    "MN": "MN",
+    "FE": "FE",
+    "FE2": "FE",
+    "CU": "CU",
+    "CU1": "CU",
+    "CO": "CO",
+    "NI": "NI",
+    "CD": "CD",
 }
 
 
@@ -39,9 +87,11 @@ class Atom:
 
     def pdb_line(self, serial: int) -> str:
         name = self.name if len(self.name) == 4 else f" {self.name:<3}"
-        return (f"{self.record:<6}{serial % 100000:5d} {name:<4} {self.resname:>3} {self.chain:1}"
-                f"{self.resseq:4d}{self.icode:1}   {self.x:8.3f}{self.y:8.3f}{self.z:8.3f}"
-                f"{self.occ:6.2f}{self.b:6.2f}          {self.element:>2}")
+        return (
+            f"{self.record:<6}{serial % 100000:5d} {name:<4} {self.resname:>3} {self.chain:1}"
+            f"{self.resseq:4d}{self.icode:1}   {self.x:8.3f}{self.y:8.3f}{self.z:8.3f}"
+            f"{self.occ:6.2f}{self.b:6.2f}          {self.element:>2}"
+        )
 
 
 def read_pdb(path: Path) -> list[Atom]:
@@ -63,9 +113,22 @@ def read_pdb(path: Path) -> list[Atom]:
             element = "".join(c for c in name if c.isalpha())[:1].upper()
         occ = float(line[54:60]) if line[54:60].strip() else 1.0
         b = float(line[60:66]) if line[60:66].strip() else 0.0
-        atoms.append(Atom(line[:6].strip(), name, line[17:21].strip(), line[21].strip(),
-                          int(line[22:26]), line[26].strip(), float(line[30:38]),
-                          float(line[38:46]), float(line[46:54]), element, b, occ))
+        atoms.append(
+            Atom(
+                line[:6].strip(),
+                name,
+                line[17:21].strip(),
+                line[21].strip(),
+                int(line[22:26]),
+                line[26].strip(),
+                float(line[30:38]),
+                float(line[38:46]),
+                float(line[46:54]),
+                element,
+                b,
+                occ,
+            )
+        )
     return atoms
 
 
@@ -120,8 +183,8 @@ def is_hydrogen(a: Atom) -> bool:
 @dataclass
 class Split:
     protein: list[Atom]
-    ions: list[Atom]                 # one atom per ion
-    ligands: list[list[Atom]]        # one heavy-atom list per residue instance
+    ions: list[Atom]  # one atom per ion
+    ligands: list[list[Atom]]  # one heavy-atom list per residue instance
 
 
 def classify(atoms: list[Atom], protein_chains: set[str] | None = None) -> Split:
@@ -160,17 +223,19 @@ class GroAtom:
 def read_gro(path: Path) -> tuple[list[GroAtom], str]:
     lines = Path(path).read_text().splitlines()
     n = int(lines[1])
-    atoms = [GroAtom(int(l[0:5]), l[5:10].strip(), l[10:15].strip(),
-                     float(l[20:28]), float(l[28:36]), float(l[36:44])) for l in lines[2:2 + n]]
+    atoms = [
+        GroAtom(int(l[0:5]), l[5:10].strip(), l[10:15].strip(), float(l[20:28]), float(l[28:36]), float(l[36:44]))
+        for l in lines[2 : 2 + n]
+    ]
     return atoms, lines[2 + n]
 
 
-def write_gro(path: Path, atoms: list[GroAtom], title: str,
-              box: str = "   0.00000   0.00000   0.00000") -> None:
+def write_gro(path: Path, atoms: list[GroAtom], title: str, box: str = "   0.00000   0.00000   0.00000") -> None:
     out = [title, f"{len(atoms):5d}"]
     for i, a in enumerate(atoms, 1):
-        out.append(f"{a.resnr % 100000:5d}{a.resname[:5]:<5}{a.name[:5]:>5}{i % 100000:5d}"
-                   f"{a.x:8.3f}{a.y:8.3f}{a.z:8.3f}")
+        out.append(
+            f"{a.resnr % 100000:5d}{a.resname[:5]:<5}{a.name[:5]:>5}{i % 100000:5d}{a.x:8.3f}{a.y:8.3f}{a.z:8.3f}"
+        )
     out.append(box)
     Path(path).write_text("\n".join(out) + "\n")
 

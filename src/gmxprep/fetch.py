@@ -1,6 +1,6 @@
 """[A] Fetch structures from the RCSB PDB.
 
-    gmxprep-fetch --batch-dir B (--ids 1XVP 3QM4 ... | --query TEXT | --uniprot O75469 Q14994)
+    gmxprep-fetch --batch-dir B (--ids 1ABC 2XYZ ... | --query TEXT | --uniprot P12345 ...)
                   [--max 25] [--method xray] [--max-resolution 3.0]
                   [--format cif|pdb|both] [--out raw] [--check-updates]
 
@@ -12,12 +12,13 @@
   replaced. --check-updates also asks the RCSB Data API for the current
   revision and refetches entries revised since they were cached.
 * Search: --query runs an RCSB full-text search; --uniprot finds every entry
-  containing a chain mapped to those UniProt accessions (e.g. human PXR
-  O75469, human CAR Q14994), optionally filtered by experimental method and
+  containing a chain mapped to those UniProt accessions, optionally
+  filtered by experimental method and
   resolution, best resolution first. Both fetch at most --max entries.
 * Large structures have no legacy PDB file. With --format pdb they fail
   with a clear message; with `both` the mmCIF is still fetched.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -31,32 +32,67 @@ from .net import Cache, HTTPError, get_json
 FILES = "https://files.rcsb.org/download/{id}.{ext}.gz"
 SEARCH = "https://search.rcsb.org/rcsbsearch/v2/query"
 ENTRY = "https://data.rcsb.org/rest/v1/core/entry/{id}"
+UNIPROT_ATTR = "rcsb_polymer_entity_container_identifiers.reference_sequence_identifiers.database_accession"
 ID_RE = re.compile(r"^[0-9][A-Za-z0-9]{3}$|^pdb_[0-9]{8}$", re.I)
 
 
 def search(text: str, limit: int) -> list[str]:
-    q = {"query": {"type": "terminal", "service": "full_text", "parameters": {"value": text}},
-         "return_type": "entry",
-         "request_options": {"paginate": {"start": 0, "rows": limit},
-                             "sort": [{"sort_by": "score", "direction": "desc"}]}}
+    q = {
+        "query": {"type": "terminal", "service": "full_text", "parameters": {"value": text}},
+        "return_type": "entry",
+        "request_options": {
+            "paginate": {"start": 0, "rows": limit},
+            "sort": [{"sort_by": "score", "direction": "desc"}],
+        },
+    }
     res = get_json(SEARCH, q)
     return [hit["identifier"] for hit in (res or {}).get("result_set", [])]
 
 
 def search_uniprot(accs: list[str], limit: int, method: str | None, max_res: float | None) -> list[str]:
-    nodes = [{"type": "terminal", "service": "text", "parameters": {
-        "attribute": "rcsb_polymer_entity_container_identifiers.reference_sequence_identifiers.database_accession",
-        "operator": "in", "value": accs}}]
+    nodes = [
+        {
+            "type": "terminal",
+            "service": "text",
+            "parameters": {
+                "attribute": UNIPROT_ATTR,
+                "operator": "in",
+                "value": accs,
+            },
+        }
+    ]
     if method:
-        nodes.append({"type": "terminal", "service": "text", "parameters": {
-            "attribute": "exptl.method", "operator": "exact_match",
-            "value": {"xray": "X-RAY DIFFRACTION", "em": "ELECTRON MICROSCOPY", "nmr": "SOLUTION NMR"}[method]}})
+        nodes.append(
+            {
+                "type": "terminal",
+                "service": "text",
+                "parameters": {
+                    "attribute": "exptl.method",
+                    "operator": "exact_match",
+                    "value": {"xray": "X-RAY DIFFRACTION", "em": "ELECTRON MICROSCOPY", "nmr": "SOLUTION NMR"}[method],
+                },
+            }
+        )
     if max_res:
-        nodes.append({"type": "terminal", "service": "text", "parameters": {
-            "attribute": "rcsb_entry_info.resolution_combined", "operator": "less_or_equal", "value": max_res}})
-    q = {"query": {"type": "group", "logical_operator": "and", "nodes": nodes}, "return_type": "entry",
-         "request_options": {"paginate": {"start": 0, "rows": limit},
-                             "sort": [{"sort_by": "rcsb_entry_info.resolution_combined", "direction": "asc"}]}}
+        nodes.append(
+            {
+                "type": "terminal",
+                "service": "text",
+                "parameters": {
+                    "attribute": "rcsb_entry_info.resolution_combined",
+                    "operator": "less_or_equal",
+                    "value": max_res,
+                },
+            }
+        )
+    q = {
+        "query": {"type": "group", "logical_operator": "and", "nodes": nodes},
+        "return_type": "entry",
+        "request_options": {
+            "paginate": {"start": 0, "rows": limit},
+            "sort": [{"sort_by": "rcsb_entry_info.resolution_combined", "direction": "asc"}],
+        },
+    }
     res = get_json(SEARCH, q)
     return [hit["identifier"] for hit in (res or {}).get("result_set", [])]
 
@@ -69,7 +105,7 @@ def revision(pid: str) -> dict:
 def fetch_one(pid: str, fmt: str, cache: Cache, check_updates: bool) -> dict:
     pid = pid.upper()
     out = {"id": pid, "files": {}}
-    for ext in (("cif", "pdb") if fmt == "both" else (fmt,)):
+    for ext in ("cif", "pdb") if fmt == "both" else (fmt,):
         name = f"{pid}.{ext}"
         extra = {}
         if check_updates and cache.valid(name):
@@ -80,22 +116,21 @@ def fetch_one(pid: str, fmt: str, cache: Cache, check_updates: bool) -> dict:
             path, status = cache.fetch(name, FILES.format(id=pid, ext=ext), gunzip=True, extra=extra)
         except HTTPError as e:
             if e.status == 404 and ext == "pdb":
-                out["files"][ext] = {"status": "unavailable",
-                                     "reason": "no legacy PDB file (large entry); use mmCIF"}
+                out["files"][ext] = {"status": "unavailable", "reason": "no legacy PDB file (large entry); use mmCIF"}
                 continue
             raise
-        out["files"][ext] = {"status": status, "sha256": cache.entries[name]["sha256"][:16],
-                             "path": str(path)}
+        out["files"][ext] = {"status": status, "sha256": cache.entries[name]["sha256"][:16], "path": str(path)}
     return out
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="gmxprep-fetch", description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        prog="gmxprep-fetch", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--batch-dir", type=Path, required=True)
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("--ids", nargs="+")
-    src.add_argument("--query", help="RCSB full-text search, e.g. 'constitutive androstane receptor CITCO'")
+    src.add_argument("--query", help="RCSB full-text search, e.g. 'kinase inhibitor complex'")
     src.add_argument("--uniprot", nargs="+", help="entries containing these UniProt accessions")
     ap.add_argument("--max", type=int, default=25, help="max entries for --query/--uniprot")
     ap.add_argument("--method", choices=["xray", "em", "nmr"], help="filter for --uniprot")
@@ -130,9 +165,16 @@ def main(argv: list[str] | None = None) -> int:
                 done.append(r)
         except HTTPError as e:
             failed.append({"id": pid, "error": "not found / obsolete" if e.status == 404 else str(e)})
-    summary = {"ok": not failed, "query": a.query or a.uniprot, "fetched": done, "failed": failed,
-               "counts": {s: sum(f["status"] == s for d in done for f in d["files"].values())
-                          for s in ("downloaded", "cached", "repaired")}}
+    summary = {
+        "ok": not failed,
+        "query": a.query or a.uniprot,
+        "fetched": done,
+        "failed": failed,
+        "counts": {
+            s: sum(f["status"] == s for d in done for f in d["files"].values())
+            for s in ("downloaded", "cached", "repaired")
+        },
+    }
     print(json.dumps(summary))
     return 0 if not failed else 1
 

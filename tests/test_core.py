@@ -1,4 +1,3 @@
-import json
 import pytest
 
 from gmxprep import topology as topo
@@ -70,8 +69,11 @@ Protein             3
 
 
 def test_compress_molecules():
-    assert topo.compress_molecules([("NAD", 1), ("NAD", 1), ("ZN", 1), ("NAD", 1)]) == \
-        [("NAD", 2), ("ZN", 1), ("NAD", 1)]
+    assert topo.compress_molecules([("NAD", 1), ("NAD", 1), ("ZN", 1), ("NAD", 1)]) == [
+        ("NAD", 2),
+        ("ZN", 1),
+        ("NAD", 1),
+    ]
 
 
 def test_lock_prevents_mixing(tmp_path):
@@ -99,9 +101,14 @@ def _atom(rec, name, res, chain, seq, el):
 
 
 def test_classify_drops_water_and_h():
-    atoms = [_atom("ATOM", "N", "ALA", "A", 1, "N"), _atom("ATOM", "H", "ALA", "A", 1, "H"),
-             _atom("HETATM", "O", "HOH", "A", 2, "O"), _atom("HETATM", "ZN", "ZN", "A", 3, "ZN"),
-             _atom("HETATM", "C1", "LIG", "A", 4, "C"), _atom("HETATM", "C2", "LIG", "A", 4, "C")]
+    atoms = [
+        _atom("ATOM", "N", "ALA", "A", 1, "N"),
+        _atom("ATOM", "H", "ALA", "A", 1, "H"),
+        _atom("HETATM", "O", "HOH", "A", 2, "O"),
+        _atom("HETATM", "ZN", "ZN", "A", 3, "ZN"),
+        _atom("HETATM", "C1", "LIG", "A", 4, "C"),
+        _atom("HETATM", "C2", "LIG", "A", 4, "C"),
+    ]
     s = classify(atoms)
     assert len(s.protein) == 1 and len(s.ions) == 1 and len(s.ligands) == 1 and len(s.ligands[0]) == 2
 
@@ -123,19 +130,24 @@ def test_pose_maps_onto_template_order(tmp_path):
     pytest.importorskip("rdkit")
     from rdkit import Chem
     from rdkit.Chem import AllChem
+
     from gmxprep.ligands import LigandParams, LigandSpec, build_template, pose_coords
 
     # acetate pose as heavy-atom PDB (no H, no bond orders), shuffled atom order for the 2nd pose
     ref = Chem.AddHs(Chem.MolFromSmiles("CC(=O)[O-]"))
     AllChem.EmbedMolecule(ref, randomSeed=1)
     heavy = [a for a in ref.GetAtoms() if a.GetAtomicNum() > 1]
+
     def block(order):
         lines = []
         for i, a in enumerate(order, 1):
             p = ref.GetConformer().GetAtomPosition(a.GetIdx())
-            lines.append(f"HETATM{i:5d}  {a.GetSymbol()}{i:<2d} ACT A   1    {p.x:8.3f}{p.y:8.3f}{p.z:8.3f}"
-                         f"  1.00  0.00           {a.GetSymbol()}")
+            lines.append(
+                f"HETATM{i:5d}  {a.GetSymbol()}{i:<2d} ACT A   1    {p.x:8.3f}{p.y:8.3f}{p.z:8.3f}"
+                f"  1.00  0.00           {a.GetSymbol()}"
+            )
         return "\n".join(lines) + "\nEND\n"
+
     spec = LigandSpec("ACT", smiles="CC(=O)[O-]", charge=-1)
     mol, warns = build_template(spec, block(heavy), tmp_path, False, tmp_path / "log")
     assert mol.GetNumAtoms() == 7 and Chem.GetFormalCharge(mol) == -1 and not warns

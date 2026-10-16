@@ -1,4 +1,5 @@
 """Steps A, D, E: offline tests (metrics, cache). Network-free by design."""
+
 import numpy as np
 import pytest
 
@@ -29,12 +30,12 @@ def test_metrics_invariant_to_rigid_motion():
 def test_metrics_detect_a_displaced_domain():
     ref = _helix()
     mod = ref.copy()
-    mod[30:] = mod[30:] @ _rot(60).T + [8, 0, 0]          # second half swings away
+    mod[30:] = mod[30:] @ _rot(60).T + [8, 0, 0]  # second half swings away
     tm = tm_score(mod, ref, len(ref))[0]
-    assert 0.3 < tm < 0.7                                  # global: one half still superposes
+    assert 0.3 < tm < 0.7  # global: one half still superposes
     # local (15 Å) lDDT barely notices a rigid hinge motion - why both are reported
     assert 0.9 < lddt_ca(mod, ref) < 0.99
-    assert rmsd_after_fit(mod[:30], ref[:30]) < 1e-6        # the rigid half is intact
+    assert rmsd_after_fit(mod[:30], ref[:30]) < 1e-6  # the rigid half is intact
 
 
 def test_tm_score_normalisation_penalises_partial_coverage():
@@ -57,4 +58,4 @@ def test_cache_reuses_and_repairs(tmp_path):
     (tmp_path / "raw" / "T.cif").write_text("truncat")
     assert cache.fetch("T.cif", url)[1] == "repaired"
     assert (tmp_path / "raw" / "T.cif").read_text() == "data_TEST\n"
-    assert Cache(tmp_path / "raw").valid("T.cif")            # persisted in cache.json
+    assert Cache(tmp_path / "raw").valid("T.cif")  # persisted in cache.json

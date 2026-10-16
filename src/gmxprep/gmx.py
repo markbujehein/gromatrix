@@ -1,4 +1,5 @@
 """Thin, logged wrappers around external programs (gmx, acpype, obabel, cgenff)."""
+
 from __future__ import annotations
 
 import os
@@ -6,7 +7,7 @@ import re
 import shlex
 import shutil
 import subprocess
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 
 
@@ -14,8 +15,7 @@ class ToolError(RuntimeError):
     pass
 
 
-def run(cmd: list[str], cwd: Path, log: Path, stdin: str | None = None,
-        env_extra: dict | None = None) -> str:
+def run(cmd: list[str], cwd: Path, log: Path, stdin: str | None = None, env_extra: dict | None = None) -> str:
     """Run `cmd`, appending full output to `log`. Raises ToolError with the log tail."""
     if shutil.which(cmd[0]) is None and not Path(cmd[0]).exists():
         raise ToolError(f"'{cmd[0]}' not found on PATH")
@@ -30,7 +30,7 @@ def run(cmd: list[str], cwd: Path, log: Path, stdin: str | None = None,
     return proc.stdout + proc.stderr
 
 
-@lru_cache(maxsize=None)
+@cache
 def data_prefix(gmx: str) -> Path | None:
     try:
         out = subprocess.run([gmx, "-quiet", "--version"], capture_output=True, text=True).stdout
@@ -51,8 +51,10 @@ def locate_ff_dir(gmx_name: str, gmx: str, extra: list[Path]) -> Path:
         d = base / f"{gmx_name}.ff"
         if (d / "forcefield.itp").exists():
             return d.resolve()
-    raise ToolError(f"{gmx_name}.ff not found in {[str(c) for c in candidates]}; "
-                    "download the port and place it in the batch dir or on GMXLIB")
+    raise ToolError(
+        f"{gmx_name}.ff not found in {[str(c) for c in candidates]}; "
+        "download the port and place it in the batch dir or on GMXLIB"
+    )
 
 
 def gmxlib_env(ff_dir: Path) -> dict:
