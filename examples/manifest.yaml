@@ -1,0 +1,24 @@
+# Paths are relative to this file. Every enzyme x target pair needs a docked complex.
+forcefield: amber            # optional; must equal the batch lock
+
+enzymes:
+  - {id: CYP3A4, pdb: ../work/relaxed/1TQN_A.pdb}      # HEM cofactor travels with chain A
+  - {id: CYP2D6, pdb: ../work/relaxed/3QM4_A.pdb}
+
+targets:
+  - {id: MDZ, kind: ligand, resname: MDZ, sdf: ../work/ligands/midazolam_H.sdf}
+  - {id: TST, kind: ligand, resname: TES}               # pose taken from the first complex
+  # - {id: PEP1, kind: protein, pdb: ../work/relaxed/pep1.pdb, chains: [P]}
+
+complexes:
+  - {enzyme: CYP3A4, target: MDZ, pdb: ../docked/CYP3A4_MDZ.pdb, sdf: ../docked/CYP3A4_MDZ.sdf}
+  - {enzyme: CYP3A4, target: TST, pdb: ../docked/CYP3A4_TES.pdb}
+  - {enzyme: CYP2D6, target: MDZ, pdb: ../docked/CYP2D6_MDZ.pdb}
+  - {enzyme: CYP2D6, target: TST, pdb: ../docked/CYP2D6_TES.pdb}
+
+# One entry per non-ion HET residue name (cofactors AND targets). The SMILES fixes the
+# protonation state used for every system in the batch.
+ligands:
+  MDZ: {charge: 0}           # template = target sdf (explicit H)
+  TES: {smiles: "C[C@]12CC[C@H]3[C@H]([C@@H]1CC[C@@H]2O)CCC4=CC(=O)CC[C@]34C", charge: 0}
+  HEM: {sdf: ../work/ligands/HEM_mcpb_placeholder.sdf}   # Fe-containing: build will stop and ask for MCPB.py
