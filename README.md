@@ -110,6 +110,29 @@ gmxprep-gmx build    --batch-dir $B --manifest manifest.yaml
 gmxprep-gmx verify   --batch-dir $B && gmxprep-gmx smoke --batch-dir $B
 ```
 
+## Development
+
+The environment is managed with [pixi](https://pixi.sh). It reads `pixi.toml` and the committed
+`pixi.lock`, so everyone (and CI) gets byte-identical conda-forge packages:
+
+```bash
+curl -fsSL https://pixi.sh/install.sh | bash   # or: brew install pixi / winget install prefix-dev.pixi
+pixi run test        # fast unit tests (Python 3.12, OpenMM, PDBFixer, RDKit from conda-forge)
+pixi run test-all    # full suite incl. the offline end-to-end regression, with coverage
+pixi run lint        # ruff check + ruff format --check (tiny env, no science stack)
+pixi run fmt         # auto-format and auto-fix before committing
+pixi run -e py310 test-all   # the other Python edges CI checks on pushes (py310, py313)
+pixi shell -e md     # adds GROMACS / acpype / Open Babel for real step-F builds
+```
+
+Run `pixi run lint && pixi run test` before pushing. CI (`.github/workflows/ci.yml`) runs the same
+tasks:
+* Ruff, plus the full test suite with coverage, on every pull request, using Python 3.12.
+* Additionally Python 3.10 and 3.13 on pushes to `main`/`dev`.
+* Environments are cached from the lockfile, so jobs install in seconds. After changing
+  dependencies, run `pixi lock` and commit `pixi.lock`; CI uses `--locked` and fails if the lock
+  is stale.
+
 ## Design notes
 
 * **Step F in one paragraph.** `build` expands the manifest into systems and refuses an incomplete

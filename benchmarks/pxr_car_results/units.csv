@@ -1,0 +1,17 @@
+id,receptor,target,selected_unit,chains,candidates,inventory,loops_modelled,gaps_left_open,atoms_built,h_removed,waters_removed,altloc_decision,warnings
+1ILG,PXR,,assembly-1,A,1,,0,1,61,0,250,,1
+1ILH,PXR,SRL,assembly-1,A,1,SRLx1,0,1,61,0,166,"SRL:branch A,B,C",1
+1M13,PXR,HYF,assembly-1,A,1,HYFx1,0,1,79,0,265,,0
+1NRL,PXR,SRL,assembly-1,AC,3,SRLx1,0,2,38,0,500,,0
+1SKX,PXR,RFP,assembly-1,A,1,RFPx1,2,1,103,0,93,,0
+1XV9,CAR,CI2,assembly-1,ABEF,3,F15x1;CI2x1,0,0,21,90,66,CI2:branch A,3
+1XVP,CAR,CID,assembly-2,CDGH,5,F15x1;CIDx1,0,0,20,58,98,CID:primary,1
+2O9I,PXR,444,assembly-2,BD,3,444x1,0,2,3,0,135,,0
+2QNV,PXR,CDZ,assembly-1,AB,2,CDZx2,2,1,132,0,20,,0
+3CTB,PXR,,assembly-2,B,3,,2,4,89,0,356,,1
+3HVL,PXR,SRL,assembly-2,B,3,SRLx1,2,4,97,0,257,,0
+3R8D,PXR,PNU,assembly-1,A,1,PNUx1,1,1,90,0,15,,0
+4J5W,PXR,,assembly-1,ABCD,3,MGx2,2,8,46,0,175,,1
+4J5X,PXR,SRL,assembly-1,DCAB,3,SRLx2,3,6,99,0,160,,0
+4NY9,PXR,2Q4,assembly-1,A,2,2Q4x1,1,1,39,0,15,,0
+4S0S,PXR,,assembly-2,BE,3,,0,2,263,0,0,,1

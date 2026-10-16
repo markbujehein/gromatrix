@@ -17,7 +17,16 @@
 | `severe clash with environment` (unit.json → altlocs) | A branch pose overlaps the protein in that state | The branch is skipped. Usually an occupancy-coupled side chain carries a different letter. |
 | `internal gaps left open` | A missing loop longer than `--max-loop` | Charged termini at the gap are an approximation. For loops near the site of interest, model them properly (MODELLER/AF) instead of raising `--max-loop`. |
 | `could not map label->author chain IDs` | Unusual mmCIF | Inspect chain IDs in `fixed/<ID>.pdb`. Ligands may sit on the wrong chain letter. |
+| `HETs whose deposited chain label differs from the chain they bind` | The deposit assigns a ligand to one chain, but it sits in another chain's pocket | Informational: assembly membership already follows the physical binding chain. Check the selected unit holds the intended pocket. |
+| `altloc L not used - pose does not touch this unit` | The deposit stores a second copy of the ligand, bound elsewhere, as an altloc of the same residue | Correct to drop for this unit. If that other site is the one you want, select the unit containing it (`--unit`). |
 | `multi-character chain IDs` | Very large deposit | Not supported in PDB output |
+
+## Step E
+
+| Message | Cause | Fix |
+|---|---|---|
+| `no UniProt mapping` | Engineered or synthetic chain (e.g. designed binders), or neither PDBe nor RCSB maps it | Expected for non-natural chains. For natural ones pass `--uniprot CHAIN:ACC`. |
+| `sequence identity < 0.9` flag | Wrong accession (e.g. a fusion construct), or heavy engineering | Fusion chains use the accession covering most of the chain. Override with `--uniprot` if that is still wrong. |
 
 ## Step F
 
