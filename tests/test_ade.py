@@ -3,8 +3,8 @@
 import numpy as np
 import pytest
 
-from gmxprep.afdb import align, kabsch, lddt_ca, rmsd_after_fit, tm_score
-from gmxprep.net import Cache
+from gromatrix.afdb import align, kabsch, lddt_ca, rmsd_after_fit, tm_score
+from gromatrix.net import Cache
 
 
 def _helix(n=60):

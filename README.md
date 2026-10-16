@@ -156,7 +156,7 @@ gromatrix/
 ├── examples/manifest.yaml            # matrix definition consumed by step F
 ├── benchmarks/                       # validation reports on real structure panels
 ├── scripts/package_skills.py         # validates + zips each skill for upload (used by the release workflow)
-├── src/gmxprep/
+├── src/gromatrix/
 │   ├── net.py           # stdlib HTTP with retries + sha256 download cache
 │   ├── fetch.py         # [A] RCSB fetch: IDs, full-text or UniProt search
 │   ├── structure.py     # mmCIF/PDB metadata: entities, assemblies, operators, label->auth chains
@@ -232,7 +232,7 @@ tasks:
 * The `skills` job validates and zips every agent skill on each push and pull request, so a broken
   skill (e.g. invalid YAML frontmatter) fails CI instead of failing on upload.
 
-**Releasing.** Set the version in `pyproject.toml` / `pixi.toml` / `src/gmxprep/__init__.py`, merge
+**Releasing.** Set the version in `pyproject.toml` / `pixi.toml` / `src/gromatrix/__init__.py`, merge
 to `main`, then tag:
 
 ```bash

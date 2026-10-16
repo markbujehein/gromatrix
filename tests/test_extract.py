@@ -11,9 +11,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from gmxprep.extract import assign_hets, au_units, build_assembly, chain_contacts, extract_one, load_au
-from gmxprep.pdbio import Atom, write_pdb
-from gmxprep.structure import compose, is_identity, parse_oper_expression
+from gromatrix.extract import assign_hets, au_units, build_assembly, chain_contacts, extract_one, load_au
+from gromatrix.pdbio import Atom, write_pdb
+from gromatrix.structure import compose, is_identity, parse_oper_expression
 
 DATA = Path(__file__).parent / "data"
 
@@ -133,7 +133,7 @@ def test_au_units_require_connected_interfaces():
 @pytest.mark.slow
 def test_1xvp_benchmark(tmp_path):
     pytest.importorskip("pdbfixer")
-    from gmxprep import extract, fix
+    from gromatrix import extract, fix
 
     raw = tmp_path / "raw"
     raw.mkdir()
@@ -163,7 +163,7 @@ def test_1xvp_benchmark(tmp_path):
 
     # Step D: the selected unit relaxes without implosion/explosion; the ligand-only file is skipped.
     pytest.importorskip("openmm")
-    from gmxprep import relax
+    from gromatrix import relax
 
     relax.main(["--batch-dir", str(tmp_path), "--files", "enzyme.pdb", "target_CID.pdb", "--platform", "CPU"])
     rj = json.loads((tmp_path / "relaxed" / "1XVP" / "relax.json").read_text())["files"]
@@ -186,7 +186,7 @@ def _alt_group(xa, xb, elements, names):
 
 
 def test_altloc_policy_ring_flip_shift_and_average():
-    from gmxprep import altlocs
+    from gromatrix import altlocs
 
     ang = np.radians(np.arange(6) * 60)
     ring = np.c_[1.39 * np.cos(ang), 1.39 * np.sin(ang), np.zeros(6)]
@@ -203,7 +203,7 @@ def test_altloc_policy_ring_flip_shift_and_average():
 
 
 def test_resolve_picks_highest_occupancy():
-    from gmxprep import altlocs
+    from gromatrix import altlocs
 
     def a(occ, x):
         return Atom("HETATM", "C1", "LIG", "A", 1, "", x, 0.0, 0.0, "C", 10.0, occ)
@@ -265,7 +265,7 @@ def test_het_follows_the_chain_it_binds_not_its_label(tmp_path):
 def test_altloc_far_from_unit_is_not_a_conformer():
     """An 'altloc' far from the unit is an alternate *copy* stored as a conformer
     (seen in a benchmark deposit). The contact gate must reject it."""
-    from gmxprep.extract import clash_report
+    from gromatrix.extract import clash_report
 
     res = _residues(_chain("A", 0) + _lig("A", 1.0, 3.0) + _lig("A", 60.0, 40.0, seq=501))
     env = [r for r in res if r.kind == "polymer"]

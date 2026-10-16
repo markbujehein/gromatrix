@@ -1,8 +1,8 @@
 import pytest
 
-from gmxprep import checks
-from gmxprep.gmx_prep import load_manifest
-from gmxprep.pdbio import GroAtom, write_gro
+from gromatrix import checks
+from gromatrix.gmx_prep import load_manifest
+from gromatrix.pdbio import GroAtom, write_gro
 
 
 def _setup(tmp_path):

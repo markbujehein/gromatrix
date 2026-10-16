@@ -10,9 +10,9 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from gmxprep.fix import ADDITIVES
-from gmxprep.pdbio import ION_RES, WATER_RES, read_pdb
-from gmxprep.structure import POLYMER_RES
+from gromatrix.fix import ADDITIVES
+from gromatrix.pdbio import ION_RES, WATER_RES, read_pdb
+from gromatrix.structure import POLYMER_RES
 
 B = Path(sys.argv[1])
 targets, info = [], {}
@@ -43,7 +43,7 @@ print(
     )
 )
 r = subprocess.run(
-    [sys.executable, "-m", "gmxprep.extract", "--batch-dir", str(B), "--targets", ",".join(targets)],
+    [sys.executable, "-m", "gromatrix.extract", "--batch-dir", str(B), "--targets", ",".join(targets)],
     capture_output=True,
     text=True,
 )

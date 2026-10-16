@@ -16,7 +16,7 @@ How to choose:
   and needs the community port.
 - `charmm36m` suits disordered regions, membranes and lipids, or groups that already use CHARMM/CGenFF.
 
-To add a forcefield, add one entry in `src/gmxprep/forcefields.py`. It must declare the ligand
+To add a forcefield, add one entry in `src/gromatrix/forcefields.py`. It must declare the ligand
 engine, the ion moleculetypes and the mdp non-bonded block.
 
 ## Why non-bonded settings are tied to the forcefield

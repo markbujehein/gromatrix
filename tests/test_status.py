@@ -2,7 +2,7 @@
 
 import json
 
-from gmxprep.status import batch_status
+from gromatrix.status import batch_status
 
 
 def _w(path, data=""):
