@@ -26,6 +26,28 @@ def test_next_skill_follows_pipeline_state(tmp_path):
     _w(b / "relaxed" / "1ABC" / "relax.json", {"files": {"enzyme.pdb": {"status": "ok"}}})
     _w(b / "af" / "1ABC.json", {"A": {"tm_score": 0.95, "status": "ok"}})
     assert batch_status(b)["next"]["skill"] == "gromatrix-gmx-builder"  # build
+    _w(b / "systems" / "E1" / "system.json", {"status": "ok"})
+    assert batch_status(b)["next"]["command"].startswith("gmxprep-gmx smoke")
     _w(b / "systems" / "E1" / "system.json", {"status": "ok", "smoke": {"ok": True}})
+    st = batch_status(b)
+    assert st["systems"]["smoke_ok"] == 1 and st["next"]["skill"] == "gromatrix-execution"  # G
+    assert st["steps"] == dict(zip("ABCDEFGH", ["done"] * 6 + ["pending"] * 2))
+    _w(b / "systems" / "E1" / "run.json", {"status": "running"})
+    assert "running" in batch_status(b)["next"]["why"]
+    _w(b / "systems" / "E1" / "run.json", {"status": "failed"})
+    assert batch_status(b)["next"]["command"].endswith("--only E1")
+    _w(b / "systems" / "E1" / "run.json", {"status": "done"})
+    st = batch_status(b)
+    assert st["next"]["skill"] == "gromatrix-analysis" and st["steps"]["G"] == "done"  # H
+    _w(b / "systems" / "E1" / "analysis" / "analysis.json", {"status": "ok", "flags": ["ligand_drift: ..."]})
     final = batch_status(b)
-    assert final["systems"]["smoke_ok"] == 1 and final["next"]["skill"] is None
+    assert final["next"]["skill"] is None and final["steps"]["H"] == "done"
+    assert final["systems"]["analysis_flags"] == {"E1": ["ligand_drift: ..."]}
+
+
+def test_own_pdbs_batch_skips_structure_steps(tmp_path):
+    """Systems built from the user's own docked PDBs: A-E are n/a, not 'pending'."""
+    _w(tmp_path / "forcefield.lock.json", {"key": "amber99sb-ildn"})
+    _w(tmp_path / "systems" / "X" / "system.json", {"status": "ok", "smoke": {"ok": True}})
+    st = batch_status(tmp_path)
+    assert st["steps"]["A"] == "n/a" and st["next"]["skill"] == "gromatrix-execution"

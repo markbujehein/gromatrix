@@ -2,15 +2,15 @@
 #   pixi run test        fast unit tests (default env, Python 3.12)
 #   pixi run test-all    full suite incl. the offline end-to-end regression, with coverage
 #   pixi run lint        ruff check + ruff format --check (tiny env, no science stack)
-#   pixi run -e md ...   adds GROMACS / AmberTools / Open Babel for full step-F runs
+#   pixi run -e md ...   adds GROMACS / AmberTools / Open Babel for real step F-H runs
 [workspace]
 name = "gromatrix"
-version = "1.0.0"
+version = "0.2.0"
 description = "PDB -> GROMACS simulation matrix with a batch-locked forcefield"
 channels = ["conda-forge"]
 platforms = ["linux-64", "osx-64", "osx-arm64"]
 
-# ---------------------------------------------------------------- runtime (steps A-E)
+# ---------------------------------------------------------------- runtime (steps A-E; F-G drive external GROMACS)
 [dependencies]
 python = ">=3.10"
 numpy = ">=1.24"
@@ -42,6 +42,12 @@ ruff-check = "ruff check src tests scripts benchmarks"
 ruff-format-check = "ruff format --check src tests scripts benchmarks"
 fmt = { cmd = "ruff format src tests scripts benchmarks && ruff check --fix src tests scripts benchmarks", description = "auto-format and auto-fix" }
 
+# Step H (trajectory analysis): MDAnalysis + headless matplotlib. In the test envs so CI
+# exercises the analysis end to end on a synthetic trajectory.
+[feature.analysis.dependencies]
+mdanalysis = ">=2.7"
+matplotlib-base = ">=3.8"
+
 # Skill packaging needs only Python + PyYAML (tiny env, used by CI and the release workflow).
 [feature.skills.dependencies]
 python = "3.12.*"
@@ -71,13 +77,12 @@ gromacs = ">=2023"
 acpype = "*"
 openbabel = "*"
 networkx = "*"
-mdanalysis = "*"
 
 # ---------------------------------------------------------------- environments
 [environments]
-default = { features = ["py312", "test"], solve-group = "default" }
+default = { features = ["py312", "analysis", "test"], solve-group = "default" }
 lint = { features = ["lint"], no-default-feature = true }
 skills = { features = ["skills"], no-default-feature = true }
-py310 = { features = ["py310", "test"] }
-py313 = { features = ["py313", "test"] }
-md = { features = ["py312", "md", "test"], solve-group = "default" }
+py310 = { features = ["py310", "analysis", "test"] }
+py313 = { features = ["py313", "analysis", "test"] }
+md = { features = ["py312", "analysis", "md", "test"], solve-group = "default" }
