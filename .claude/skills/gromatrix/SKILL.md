@@ -19,8 +19,8 @@ conda env create -f environment.yml && conda activate gmxprep   # from the repo 
 python -m pytest -q tests                                       # sanity check
 ```
 
-If a `gmxprep-*` command is missing, that module is not implemented yet. Tell the user which step is
-unavailable rather than improvising a replacement script.
+All six commands (`gmxprep-fetch`, `-fix`, `-extract`, `-relax`, `-afcompare`, `-gmx`) are implemented.
+If one is missing, the package is not installed (`pip install -e .`). Don't improvise a replacement.
 
 ## 1. Settle the decisions that are hard to undo
 
@@ -45,11 +45,11 @@ Run the steps in order. Each step reads the previous step's directory. Full flag
 
 | Step | Command | Check before moving on |
 |---|---|---|
-| A fetch | `gmxprep-fetch --batch-dir B --ids 1TQN 3QM4` | every ID has a file in `B/raw/` |
+| A fetch | `gmxprep-fetch --batch-dir B --ids 1TQN 3QM4` (or `--uniprot ACC --method xray`) | `failed` empty; reruns report `cached` |
 | B fix | `gmxprep-fix --batch-dir B` | `open_gaps` and `warnings` (alternate ligand conformers, unmodelled loops) |
 | C extract | `gmxprep-extract --batch-dir B --targets RES` | `selected`, `inventory` hold the target and cofactors |
-| D relax | `gmxprep-relax --batch-dir B --in units --out relaxed` | no unit over `--max-rmsd` |
-| E AF compare | `gmxprep-afcompare --batch-dir B --in relaxed --out af_report.csv` | flag TM < 0.8 or lDDT < 0.7 to the user |
+| D relax | `gmxprep-relax --batch-dir B` | `failed` empty. Report any failure label verbatim. |
+| E AF compare | `gmxprep-afcompare --batch-dir B` | report `flagged` chains (TM < 0.8, lDDT < 0.7, identity < 0.9) |
 | F plan | `gmxprep-gmx plan --batch-dir B --manifest M` | system list = enzymes + targets + all pairs |
 | F build | `gmxprep-gmx build --batch-dir B --manifest M` | `"ok": true`, then read `warnings` |
 | F verify | `gmxprep-gmx verify --batch-dir B` | `"ok": true` and `problems` is empty |
@@ -65,6 +65,11 @@ JSON reports warnings. Report the selected unit and why the runner-up lost.
 the mean of two partial-occupancy states is not a physical structure. If C branched the matrix
 (`complex_<T>_altA/B.pdb`), add one manifest complex per branch with `variant: altA` etc. Report
 the symmetry-corrected RMSD to the user when they ask why something was or wasn't branched.
+
+**Reading D and E.** A `distortion` or `implosion/explosion` in D usually means a bad input
+(clashing altloc branch, mis-built loop): go back to B/C, don't loosen `--max-rmsd`. In E, a low
+`rmsd_core` with a high `rmsd_all` is normal (flexible termini/loops have low pLDDT). A low TM-score
+with a high lDDT means a rigid-body domain or hinge difference, not a local error.
 
 Steps A–E are useful but optional: if the user already has relaxed, docked PDBs, go straight to F.
 

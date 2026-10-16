@@ -133,6 +133,14 @@ def test_1xvp_benchmark(tmp_path):
     assert {"complex_CID_altA", "complex_CID_altB"} <= set(rep3["files"])
     assert all(b["clash"]["clashes"] == 0 for b in rep3["altlocs"]["CID"]["branches"].values())
 
+    # Step D: the selected unit relaxes without implosion/explosion; the ligand-only file is skipped.
+    pytest.importorskip("openmm")
+    from gmxprep import relax
+    relax.main(["--batch-dir", str(tmp_path), "--files", "enzyme.pdb", "target_CID.pdb", "--platform", "CPU"])
+    rj = json.loads((tmp_path / "relaxed" / "1XVP" / "relax.json").read_text())["files"]
+    assert rj["enzyme.pdb"]["status"] == "ok" and rj["enzyme.pdb"]["rmsd_heavy"] < 2.5
+    assert rj["target_CID.pdb"]["status"] == "skipped"
+
 
 def _alt_group(xa, xb, elements, names):
     return {"chain": "A", "resname": "LIG", "resseq": 500, "icode": "", "primary": "A",

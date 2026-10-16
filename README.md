@@ -19,13 +19,14 @@ gromatrix/
 │   ├── checks.py        # [F] safety checks: top/gro atom walk, charge, named index, EM/MD log parsing
 │   ├── mdp.py           # em/nvt/npt/md mdp with FF-specific non-bonded settings
 │   ├── gmx_prep.py      # [F] CLI: lock / plan / build / verify
-│   ├── fetch.py         # [A] planned
+│   ├── net.py           # stdlib HTTP with retries + sha256 download cache
+│   ├── fetch.py         # [A] RCSB fetch: IDs, full-text or UniProt search; hash-checked cache
 │   ├── structure.py     # mmCIF/PDB metadata: entities, assemblies, operators, label->auth chains
 │   ├── altlocs.py       # alternate-conformer policy (primary by occupancy, symmetry-aware RMSD, no averaging)
 │   ├── fix.py           # [B] PDBFixer clean-up
 │   ├── extract.py       # [C] assembly/AU candidates, ligand mapping, completeness scoring, matrix slicing
-│   ├── relax.py         # [D] planned
-│   └── afcompare.py     # [E] planned
+│   ├── relax.py         # [D] OpenMM two-stage restrained minimisation + integrity gates
+│   └── afdb.py          # [E] AFDB comparison: RMSD (all/core), TM-score, Cα-lDDT
 ├── tests/test_core.py, test_extract.py, data/1XVP.cif.gz (benchmark)
 └── .claude/skills/gromatrix/
     ├── SKILL.md                      # operational router (what to run, in what order)
@@ -52,25 +53,15 @@ non-zero on failure; verbose tool output goes to log files. Steps C-F read the f
 
 | Step | Command | Key arguments |
 |---|---|---|
-| lock | `gmxprep-gmx lock` | `--forcefield {amber,amber99sb-ildn,amber14sb,amber19sb,charmm,charmm36m}` |
-| A | `gmxprep-fetch` | `--ids 1TQN 3QM4` or `--query TEXT [--max N]`, `--format {cif,pdb}`, `--assembly 1` |
+| lock | `gmxprep-gmx lock` | `--forcefield {amber,amber99sb-ildn,amber99sb-ildn-tip4pew,amber14sb,amber19sb,charmm,charmm36m}` |
+| A | `gmxprep-fetch` | `--ids 1TQN 3QM4` / `--query TEXT` / `--uniprot ACC`, `--method xray`, `--max-resolution`, `--format {cif,pdb,both}`, `--check-updates` |
 | B | `gmxprep-fix` | `--in raw --out fixed`, `--max-loop 8`, `--waters {none,ligand-shell,shell,all}`, `--keep-het {all,none,LIST}` |
 | C | `gmxprep-extract` | `--targets CID`, `--expect F15:1`, `--assembly {auto,none,N}`, `--ligand-cutoff 4.5`, `--min-contacts 10` |
-| D | `gmxprep-relax` | `--in units --out relaxed`, `--restraint-k 10`, `--max-rmsd 0.5`, `--platform CUDA` |
-| E | `gmxprep-afcompare` | `--in relaxed --out af_report.csv`, `--uniprot-map map.tsv`, `--plddt-min 70` |
+| D | `gmxprep-relax` | `--solvent {auto,gbn2,rf}`, `--restraint-k 1000`, `--max-rmsd 2.5`, `--max-drop 100`, `--pocket-cutoff 5`, `--platform` |
+| E | `gmxprep-afcompare` | `--uniprot C:P19793`, `--plddt-min 70`, `--min-length 30`, `--tm-min 0.8`, `--lddt-min 0.7` |
 | F | `gmxprep-gmx plan / build / verify / smoke` | `--manifest`, `--only`, `--box`, `--pad`, `--conc`, `--temp`, `--md-ns`, `--gmx` |
 
-Design notes for the planned modules:
-
-- **A** uses `search.rcsb.org/rcsbsearch/v2/query` for text search and `files.rcsb.org/download/{id}.cif`;
-  mmCIF is the default because the biological assembly records are needed by C.
-- **B** and **C** are implemented; see the docstrings of `fix.py` and `extract.py` and the
-  1XVP section below.
-- **D** uses OpenMM with the family-matched FF (`amber14-all.xml` or `charmm36.xml`, OBC2/GBn2 implicit
-  solvent), harmonic heavy-atom restraints, ligands from `openmmforcefields` (GAFF2 or restrained), and
-  fails a structure whose heavy-atom RMSD exceeds `--max-rmsd`.
-- **E** maps chains to UniProt via SIFTS, fetches `alphafold.ebi.ac.uk/api/prediction/{acc}`, and reports
-  Cα RMSD after superposition on aligned residues, TM-score (`tmtools`) and lDDT, with low-pLDDT regions excluded.
+All steps are implemented; each module's docstring documents its algorithm. Full flags: `.claude/skills/gromatrix/references/cli.md`.
 
 ## [C] and the 1XVP benchmark
 

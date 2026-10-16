@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "PDB -> GROMACS enzyme x target simulation matrix with a batch-locked forcefield"
 requires-python = ">=3.10"
 dependencies = ["pyyaml>=6", "numpy>=1.24", "scipy>=1.10", "biopython>=1.80"]
+# openmm + pdbfixer are needed for steps B and D; tmtools is optional (cross-check only)
 
 [project.optional-dependencies]
 # rdkit/openmm/pdbfixer/acpype/openbabel/gromacs are best installed from conda-forge (environment.yml)
@@ -15,12 +16,11 @@ test = ["pytest>=7"]
 
 [project.scripts]
 gmxprep-gmx = "gmxprep.gmx_prep:main"
+gmxprep-fetch = "gmxprep.fetch:main"
 gmxprep-fix = "gmxprep.fix:main"
 gmxprep-extract = "gmxprep.extract:main"
-# Planned (contracts in README.md):
-# gmxprep-fetch = "gmxprep.fetch:main"
-# gmxprep-relax = "gmxprep.relax:main"
-# gmxprep-afcompare = "gmxprep.afcompare:main"
+gmxprep-relax = "gmxprep.relax:main"
+gmxprep-afcompare = "gmxprep.afdb:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
