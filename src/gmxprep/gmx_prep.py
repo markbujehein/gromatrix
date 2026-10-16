@@ -9,6 +9,7 @@
 Each command prints one compact JSON object on stdout; tool chatter goes to
 <batch>/systems/<id>/build.log and <batch>/params/<RES>/param.log.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -29,16 +30,16 @@ from . import topology as topo
 from .forcefields import ForceField, ForcefieldMismatch, acquire_lock, assert_same, load_lock, resolve
 from .gmx import ToolError, data_prefix, gmxlib_env, ion_atom_names, locate_ff_dir, run
 from .ligands import LigandSpec, parameterise, pose_coords
-from .pdbio import ION_RES, GroAtom, classify, read_gro, read_pdb, renumber, residue_block, write_gro, write_pdb
+from .pdbio import ION_RES, GroAtom, classify, read_gro, read_pdb, residue_block, write_gro, write_pdb
 
 
 # ----------------------------------------------------------------- manifest
 @dataclass
 class SystemDef:
     id: str
-    role: str                     # enzyme | target | complex
+    role: str  # enzyme | target | complex
     pdb: Path | None
-    sdf: Path | None = None       # explicit-H pose for the target ligand
+    sdf: Path | None = None  # explicit-H pose for the target ligand
     target_resname: str | None = None
     protein_chains: set[str] | None = None
     enzyme: str | None = None
@@ -58,7 +59,9 @@ def load_manifest(path: Path, allow_incomplete: bool) -> Manifest:
     path = Path(path).resolve()
     root = path.parent
     raw = yaml.safe_load(path.read_text())
-    p = lambda v: (root / v).resolve() if v else None
+
+    def p(v):
+        return (root / v).resolve() if v else None
 
     enzymes = {e["id"]: e for e in raw.get("enzymes", [])}
     targets = {t["id"]: t for t in raw.get("targets", [])}
@@ -69,21 +72,24 @@ def load_manifest(path: Path, allow_incomplete: bool) -> Manifest:
 
     # A pair may have several variants (e.g. altloc branches from step C: variant: altA / altB).
     complexes = {(c["enzyme"], c["target"], c.get("variant")): c for c in raw.get("complexes", [])}
-    for (e, t, _v) in complexes:
+    for e, t, _v in complexes:
         if e not in enzymes or t not in targets:
             raise ValueError(f"complex {e}+{t} references an unknown id")
     pairs = {(e, t) for e, t, _v in complexes}
     missing = [f"{e}__{t}" for e in enzymes for t in targets if (e, t) not in pairs]
     if missing and not allow_incomplete:
-        raise ValueError(f"matrix incomplete - no docked complex for {missing}; "
-                         "every enzyme must be paired with every target (or pass --allow-incomplete)")
+        raise ValueError(
+            f"matrix incomplete - no docked complex for {missing}; "
+            "every enzyme must be paired with every target (or pass --allow-incomplete)"
+        )
 
     systems = [SystemDef(eid, "enzyme", p(e["pdb"])) for eid, e in enzymes.items()]
     for tid, t in targets.items():
         kind = t.get("kind", "ligand")
         if kind == "protein":
-            systems.append(SystemDef(tid, "target", p(t["pdb"]),
-                                     protein_chains=set(t["chains"]) if t.get("chains") else None))
+            systems.append(
+                SystemDef(tid, "target", p(t["pdb"]), protein_chains=set(t["chains"]) if t.get("chains") else None)
+            )
             continue
         src_pdb, src_sdf = p(t.get("pdb")), p(t.get("sdf"))
         if not src_pdb and not src_sdf:  # fall back to the first docked pose
@@ -92,8 +98,17 @@ def load_manifest(path: Path, allow_incomplete: bool) -> Manifest:
     for (e, t, v), c in complexes.items():
         tdef = targets[t]
         tres = tdef.get("resname") if tdef.get("kind", "ligand") == "ligand" else None
-        systems.append(SystemDef(f"{e}__{t}" + (f"__{v}" if v else ""), "complex", p(c["pdb"]), p(c.get("sdf")),
-                                 target_resname=tres, enzyme=e, target=t))
+        systems.append(
+            SystemDef(
+                f"{e}__{t}" + (f"__{v}" if v else ""),
+                "complex",
+                p(c["pdb"]),
+                p(c.get("sdf")),
+                target_resname=tres,
+                enzyme=e,
+                target=t,
+            )
+        )
 
     ligands = {res: LigandSpec.from_manifest(res, d, root) for res, d in (raw.get("ligands") or {}).items()}
     for t in targets.values():  # an explicit-H target SDF can serve as its own template
@@ -149,8 +164,11 @@ def inputs_hash(sd: SystemDef, ctx: Ctx) -> str:
             h.update(Path(f).read_bytes())
     for res, spec in sorted(ctx.ligand_specs.items()):
         h.update(json.dumps([res, spec.__dict__], sort_keys=True, default=str).encode())
-    h.update(json.dumps([ctx.ff.identity(), a.box, a.pad, a.conc, a.temp, a.md_ns, sorted(sd.protein_chains or [])],
-                        sort_keys=True).encode())
+    h.update(
+        json.dumps(
+            [ctx.ff.identity(), a.box, a.pad, a.conc, a.temp, a.md_ns, sorted(sd.protein_chains or [])], sort_keys=True
+        ).encode()
+    )
     return h.hexdigest()[:16]
 
 
@@ -211,11 +229,31 @@ def build_system(sd: SystemDef, ctx: Ctx) -> dict:
     # 1. protein (all chains merged into one moleculetype so inter-chain S-S bonds survive)
     if protein:
         write_pdb(wd / "protein.pdb", protein)
-        run(ctx.g("pdb2gmx", "-f", "protein.pdb", "-o", "protein.gro", "-p", "protein.top",
-                  # -water none: water comes from our own topol.top. This also avoids the
-                  # missing `-water tip4pew` enum of older GROMACS that SQUIP works around.
-                  "-i", "posre.itp", "-ff", ff.gmx_name, "-water", "none", "-ignh",
-                  "-merge", "all"), wd, log, env_extra=ctx.env)
+        run(
+            ctx.g(
+                "pdb2gmx",
+                "-f",
+                "protein.pdb",
+                "-o",
+                "protein.gro",
+                "-p",
+                "protein.top",
+                # -water none: water comes from our own topol.top. This also avoids the
+                # missing `-water tip4pew` enum of older GROMACS that SQUIP works around.
+                "-i",
+                "posre.itp",
+                "-ff",
+                ff.gmx_name,
+                "-water",
+                "none",
+                "-ignh",
+                "-merge",
+                "all",
+            ),
+            wd,
+            log,
+            env_extra=ctx.env,
+        )
         mol = topo.extract_pdb2gmx_moleculetype((wd / "protein.top").read_text())
         (wd / "protein.itp").write_text(mol)
         itps.append("protein.itp")
@@ -226,8 +264,9 @@ def build_system(sd: SystemDef, ctx: Ctx) -> dict:
     seen: dict[str, object] = {}
     for rn, block, sdf in ligs:
         spec = ctx.ligand_specs.get(rn) or LigandSpec(rn)
-        params = parameterise(spec, block, ff, ctx.ff_dir, ctx.batch / "params",
-                              a.allow_auto_protonation, a.accept_high_penalty)
+        params = parameterise(
+            spec, block, ff, ctx.ff_dir, ctx.batch / "params", a.allow_auto_protonation, a.accept_high_penalty
+        )
         if rn not in seen:
             seen[rn] = params
             shutil.copy(params.itp, wd / params.itp.name)
@@ -246,11 +285,12 @@ def build_system(sd: SystemDef, ctx: Ctx) -> dict:
             elem = ION_RES[ion.resname]
             moltype = ff.ion_moltypes.get(elem)
             if moltype is None:
-                raise ValueError(f"{ff.key} has no non-bonded model for ion {ion.resname}; "
-                                 "treat it explicitly (e.g. MCPB.py) before building")
+                raise ValueError(
+                    f"{ff.key} has no non-bonded model for ion {ion.resname}; "
+                    "treat it explicitly (e.g. MCPB.py) before building"
+                )
             resnr = (gro[-1].resnr + 1) if gro else 1
-            gro.append(GroAtom(resnr, moltype, names.get(moltype, moltype),
-                               ion.x / 10, ion.y / 10, ion.z / 10))
+            gro.append(GroAtom(resnr, moltype, names.get(moltype, moltype), ion.x / 10, ion.y / 10, ion.z / 10))
             molecules.append((moltype, 1))
 
     # 4. topology
@@ -259,16 +299,25 @@ def build_system(sd: SystemDef, ctx: Ctx) -> dict:
     if merged:
         (wd / "ligand_params.itp").write_text(merged)
         param_itp = "ligand_params.itp"
-    topo.write_topol(wd / "topol.top", ff.gmx_name, ff.water.itp, param_itp, itps, molecules,
-                     f"{sd.id} ({sd.role}) {ff.key}")
+    topo.write_topol(
+        wd / "topol.top", ff.gmx_name, ff.water.itp, param_itp, itps, molecules, f"{sd.id} ({sd.role}) {ff.key}"
+    )
     write_gro(wd / "conf.gro", gro, f"{sd.id} {ff.key}")
 
     # 5. box, solvent, ions; then a zero-warning grompp as the integrity gate
     mdpmod.write_all(ff, wd / "mdp", a.temp, a.md_ns)
-    run(ctx.g("editconf", "-f", "conf.gro", "-o", "boxed.gro", "-bt", a.box, "-d", str(a.pad), "-c"),
-        wd, log, env_extra=ctx.env)
-    run(ctx.g("solvate", "-cp", "boxed.gro", "-cs", ff.water.solvent_gro, "-o", "solv.gro",
-              "-p", "topol.top"), wd, log, env_extra=ctx.env)
+    run(
+        ctx.g("editconf", "-f", "conf.gro", "-o", "boxed.gro", "-bt", a.box, "-d", str(a.pad), "-c"),
+        wd,
+        log,
+        env_extra=ctx.env,
+    )
+    run(
+        ctx.g("solvate", "-cp", "boxed.gro", "-cs", ff.water.solvent_gro, "-o", "solv.gro", "-p", "topol.top"),
+        wd,
+        log,
+        env_extra=ctx.env,
+    )
 
     # Pre-flight (before any grompp): topology vs coordinates, and an integer net charge.
     search = [ctx.ff_dir.parent, wd]
@@ -277,33 +326,97 @@ def build_system(sd: SystemDef, ctx: Ctx) -> dict:
         raise checks.CheckError("topology/coordinate mismatch after solvate: " + "; ".join(pre["problems"]))
     q0 = checks.assert_integer_charge(pre["charge"], f"{sd.id} solute")
     # Only a charged system may pass the ions-stage grompp with one (net-charge) warning.
-    run(ctx.g("grompp", "-f", "mdp/ions.mdp", "-c", "solv.gro", "-p", "topol.top", "-o", "ions.tpr",
-              "-maxwarn", "1" if q0 else "0"), wd, log, env_extra=ctx.env)
+    run(
+        ctx.g(
+            "grompp",
+            "-f",
+            "mdp/ions.mdp",
+            "-c",
+            "solv.gro",
+            "-p",
+            "topol.top",
+            "-o",
+            "ions.tpr",
+            "-maxwarn",
+            "1" if q0 else "0",
+        ),
+        wd,
+        log,
+        env_extra=ctx.env,
+    )
     # Select the solvent group by name, never by number (SQUIP pipes `echo 15`, which depends on group order).
-    run(ctx.g("genion", "-s", "ions.tpr", "-o", "solv_ions.gro", "-p", "topol.top",
-              "-pname", ff.cation, "-nname", ff.anion, "-neutral", "-conc", str(a.conc)),
-        wd, log, stdin="SOL\n", env_extra=ctx.env)
+    run(
+        ctx.g(
+            "genion",
+            "-s",
+            "ions.tpr",
+            "-o",
+            "solv_ions.gro",
+            "-p",
+            "topol.top",
+            "-pname",
+            ff.cation,
+            "-nname",
+            ff.anion,
+            "-neutral",
+            "-conc",
+            str(a.conc),
+        ),
+        wd,
+        log,
+        stdin="SOL\n",
+        env_extra=ctx.env,
+    )
     post = checks.top_vs_gro(wd / "topol.top", wd / "solv_ions.gro", search)
     if post["problems"] or abs(post["charge"]) > 1e-3:
         raise checks.CheckError(f"after genion: charge {post['charge']} / {post['problems']}")
     protein_mol = molecules[0][0] if protein else None
-    groups = checks.write_index(wd / "solv_ions.gro", wd / "topol.top", search, wd / "index.ndx",
-                                protein_mol, sorted(seen))
-    run(ctx.g("grompp", "-f", "mdp/em.mdp", "-c", "solv_ions.gro", "-r", "solv_ions.gro",
-              "-p", "topol.top", "-n", "index.ndx", "-o", "em.tpr", "-maxwarn", str(a.maxwarn)),
-        wd, log, env_extra=ctx.env)
+    groups = checks.write_index(
+        wd / "solv_ions.gro", wd / "topol.top", search, wd / "index.ndx", protein_mol, sorted(seen)
+    )
+    run(
+        ctx.g(
+            "grompp",
+            "-f",
+            "mdp/em.mdp",
+            "-c",
+            "solv_ions.gro",
+            "-r",
+            "solv_ions.gro",
+            "-p",
+            "topol.top",
+            "-n",
+            "index.ndx",
+            "-o",
+            "em.tpr",
+            "-maxwarn",
+            str(a.maxwarn),
+        ),
+        wd,
+        log,
+        env_extra=ctx.env,
+    )
     (wd / "run.sh").write_text(RUN_SH % {"gmx": a.gmx})
     (wd / "run.sh").chmod(0o755)
 
     lig_counts: dict[str, int] = {}
     for rn, *_ in ligs:
         lig_counts[rn] = lig_counts.get(rn, 0) + 1
-    stamp = {"id": sd.id, "role": sd.role, "enzyme": sd.enzyme, "target": sd.target,
-             "status": "ok", "forcefield": ff.identity(), "inputs_sha": digest,
-             "atoms": post["natoms_gro"], "solute_charge": q0, "index_groups": groups,
-             "components": {"protein_heavy_atoms": len(protein), "ligands": lig_counts,
-                            "ions": [i.resname for i in ions]},
-             "warnings": warnings, "next": "gmxprep-gmx smoke (EM + short NVT check), then ./run.sh"}
+    stamp = {
+        "id": sd.id,
+        "role": sd.role,
+        "enzyme": sd.enzyme,
+        "target": sd.target,
+        "status": "ok",
+        "forcefield": ff.identity(),
+        "inputs_sha": digest,
+        "atoms": post["natoms_gro"],
+        "solute_charge": q0,
+        "index_groups": groups,
+        "components": {"protein_heavy_atoms": len(protein), "ligands": lig_counts, "ions": [i.resname for i in ions]},
+        "warnings": warnings,
+        "next": "gmxprep-gmx smoke (EM + short NVT check), then ./run.sh",
+    }
     stamp_path.write_text(json.dumps(stamp, indent=2))
     return stamp
 
@@ -316,8 +429,12 @@ def cmd_lock(a) -> dict:
 
 def cmd_plan(a) -> dict:
     m = load_manifest(a.manifest, a.allow_incomplete)
-    return {"ok": True, "systems": [{"id": s.id, "role": s.role} for s in m.systems],
-            "missing_pairs": m.missing_pairs, "ligand_specs": sorted(m.ligands)}
+    return {
+        "ok": True,
+        "systems": [{"id": s.id, "role": s.role} for s in m.systems],
+        "missing_pairs": m.missing_pairs,
+        "ligand_specs": sorted(m.ligands),
+    }
 
 
 def cmd_build(a) -> dict:
@@ -340,12 +457,16 @@ def cmd_build(a) -> dict:
             (ctx.batch / "systems" / sd.id).mkdir(parents=True, exist_ok=True)
             (ctx.batch / "systems" / sd.id / "error.txt").write_text(traceback.format_exc())
             results.append({"id": sd.id, "role": sd.role, "status": "failed", "error": str(e)[:400]})
-    (ctx.batch / "matrix.json").write_text(json.dumps(
-        {"forcefield": ff.identity(), "missing_pairs": m.missing_pairs, "systems": results}, indent=2))
-    return {"ok": all(r["status"] == "ok" for r in results), "forcefield": ff.key,
-            "built": sum(r["status"] == "ok" for r in results),
-            "failed": [r for r in results if r["status"] != "ok"],
-            "warnings": sorted({w for r in results for w in r.get("warnings", [])})}
+    (ctx.batch / "matrix.json").write_text(
+        json.dumps({"forcefield": ff.identity(), "missing_pairs": m.missing_pairs, "systems": results}, indent=2)
+    )
+    return {
+        "ok": all(r["status"] == "ok" for r in results),
+        "forcefield": ff.key,
+        "built": sum(r["status"] == "ok" for r in results),
+        "failed": [r for r in results if r["status"] != "ok"],
+        "warnings": sorted({w for r in results for w in r.get("warnings", [])}),
+    }
 
 
 def cmd_verify(a) -> dict:
@@ -400,22 +521,45 @@ def cmd_verify(a) -> dict:
 def _smoke_one(wd: Path, a, env: dict) -> dict:
     """EM to convergence, then a short restrained NVT. This is SQUIP's test_mode
     idea, with pass/fail decided from the logs instead of by eye."""
-    g = lambda *x: [a.gmx, "-quiet", "-nobackup", *x]
+
+    def g(*x):
+        return [a.gmx, "-quiet", "-nobackup", *x]
+
     log = wd / "smoke.log"
     emtol = float(mdpmod.read_mdp(wd / "mdp" / "em.mdp").get("emtol", 1000))
     run(g("mdrun", "-deffnm", "em", *a.mdrun_args.split()), wd, log, env_extra=env)
     em = checks.parse_em_log(wd / "em.log", emtol)
     res = {"em": em, "ok": em["converged"]}
     if not em["converged"]:
-        res["reason"] = (f"EM did not reach Fmax < {emtol} (Fmax={em['fmax']}, Epot={em['epot']})"
-                         " - look for clashes or a bad ligand pose")
+        res["reason"] = (
+            f"EM did not reach Fmax < {emtol} (Fmax={em['fmax']}, Epot={em['epot']})"
+            " - look for clashes or a bad ligand pose"
+        )
         return res
     if a.nvt_steps:
         params = mdpmod.read_mdp(wd / "mdp" / "nvt.mdp")
         params.update({"nsteps": str(a.nvt_steps), "nstxout-compressed": "0"})
         (wd / "mdp" / "smoke_nvt.mdp").write_text("".join(f"{k:<24s} = {v}\n" for k, v in params.items()))
-        run(g("grompp", "-f", "mdp/smoke_nvt.mdp", "-c", "em.gro", "-r", "em.gro", "-p", "topol.top",
-              "-n", "index.ndx", "-o", "smoke_nvt.tpr"), wd, log, env_extra=env)
+        run(
+            g(
+                "grompp",
+                "-f",
+                "mdp/smoke_nvt.mdp",
+                "-c",
+                "em.gro",
+                "-r",
+                "em.gro",
+                "-p",
+                "topol.top",
+                "-n",
+                "index.ndx",
+                "-o",
+                "smoke_nvt.tpr",
+            ),
+            wd,
+            log,
+            env_extra=env,
+        )
         run(g("mdrun", "-deffnm", "smoke_nvt", *a.mdrun_args.split()), wd, log, env_extra=env)
         md = checks.scan_md_log(wd / "smoke_nvt.log")
         res["nvt"] = md
@@ -443,22 +587,29 @@ def cmd_smoke(a) -> dict:
             res = {"ok": False, "reason": str(e)[:300]}
         stamp["smoke"] = res
         stamp_p.write_text(json.dumps(stamp, indent=2))
-        out.append({"id": wd.name, "ok": res["ok"], **({"reason": res["reason"]} if not res["ok"] else
-                                                       {"fmax": res["em"]["fmax"]})})
+        out.append(
+            {
+                "id": wd.name,
+                "ok": res["ok"],
+                **({"reason": res["reason"]} if not res["ok"] else {"fmax": res["em"]["fmax"]}),
+            }
+        )
     return {"ok": bool(out) and all(r["ok"] for r in out), "systems": out}
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="gmx_prep", description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        prog="gmx_prep", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     def common(p, manifest=False):
         p.add_argument("--batch-dir", type=Path, required=True)
         if manifest:
             p.add_argument("--manifest", type=Path, required=True)
-            p.add_argument("--allow-incomplete", action="store_true",
-                           help="permit enzyme/target pairs without a docked complex")
+            p.add_argument(
+                "--allow-incomplete", action="store_true", help="permit enzyme/target pairs without a docked complex"
+            )
         return p
 
     p = common(sub.add_parser("lock", help="create or check the batch forcefield lock"))
@@ -487,8 +638,9 @@ def main(argv: list[str] | None = None) -> int:
 
     a = ap.parse_args(argv)
     try:
-        out = {"lock": cmd_lock, "plan": cmd_plan, "build": cmd_build, "verify": cmd_verify,
-               "smoke": cmd_smoke}[a.cmd](a)
+        out = {"lock": cmd_lock, "plan": cmd_plan, "build": cmd_build, "verify": cmd_verify, "smoke": cmd_smoke}[a.cmd](
+            a
+        )
     except (ForcefieldMismatch, ValueError, KeyError, FileNotFoundError) as e:
         out = {"ok": False, "error": f"{type(e).__name__}: {e}"}
     print(json.dumps(out))

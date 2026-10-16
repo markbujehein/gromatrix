@@ -4,6 +4,7 @@ symmetry operators and label->auth chain mapping, from mmCIF or PDB.
 Everything is expressed in *author* chain IDs and residue numbers, the
 convention used by the PDB files the rest of the pipeline reads and writes.
 """
+
 from __future__ import annotations
 
 import itertools
@@ -57,8 +58,9 @@ def compose(ops: dict, seq: tuple[str, ...]) -> dict:
 
 
 def is_identity(op: dict, tol: float = 1e-4) -> bool:
-    return all(abs(op["R"][i][j] - IDENTITY["R"][i][j]) < tol for i in range(3) for j in range(3)) \
-        and all(abs(x) < tol for x in op["t"])
+    return all(abs(op["R"][i][j] - IDENTITY["R"][i][j]) < tol for i in range(3) for j in range(3)) and all(
+        abs(x) < tol for x in op["t"]
+    )
 
 
 # ------------------------------------------------------------------ mmCIF
@@ -70,9 +72,14 @@ def _mmcif_meta(path: Path) -> dict:
     auth_asym = _list(d, "_atom_site.auth_asym_id")
     label2auth: dict[str, str] = OrderedDict()
     label_residues: dict[str, list] = {}
-    keys = zip(label_asym, auth_asym, _list(d, "_atom_site.auth_comp_id") or _list(d, "_atom_site.label_comp_id"),
-               _list(d, "_atom_site.auth_seq_id"), _list(d, "_atom_site.pdbx_PDB_ins_code"),
-               _list(d, "_atom_site.label_entity_id"))
+    keys = zip(
+        label_asym,
+        auth_asym,
+        _list(d, "_atom_site.auth_comp_id") or _list(d, "_atom_site.label_comp_id"),
+        _list(d, "_atom_site.auth_seq_id"),
+        _list(d, "_atom_site.pdbx_PDB_ins_code"),
+        _list(d, "_atom_site.label_entity_id"),
+    )
     entity_of_label = {}
     for la, aa, comp, seq, ins, ent in keys:
         label2auth.setdefault(la, aa)
@@ -83,8 +90,7 @@ def _mmcif_meta(path: Path) -> dict:
             lst.append(res)
 
     entities = {}
-    for eid, etype, desc in zip(_list(d, "_entity.id"), _list(d, "_entity.type"),
-                                _list(d, "_entity.pdbx_description")):
+    for eid, etype, desc in zip(_list(d, "_entity.id"), _list(d, "_entity.type"), _list(d, "_entity.pdbx_description")):
         entities[eid] = {"type": etype, "description": _clean(desc), "chains": []}
     for eid, strands in zip(_list(d, "_entity_poly.entity_id"), _list(d, "_entity_poly.pdbx_strand_id")):
         entities[eid]["chains"] = [s.strip() for s in strands.split(",")]
@@ -99,9 +105,11 @@ def _mmcif_meta(path: Path) -> dict:
 
     details = dict(zip(_list(d, "_pdbx_struct_assembly.id"), _list(d, "_pdbx_struct_assembly.details")))
     assemblies: dict[str, dict] = OrderedDict()
-    for aid, expr, asyms in zip(_list(d, "_pdbx_struct_assembly_gen.assembly_id"),
-                                _list(d, "_pdbx_struct_assembly_gen.oper_expression"),
-                                _list(d, "_pdbx_struct_assembly_gen.asym_id_list")):
+    for aid, expr, asyms in zip(
+        _list(d, "_pdbx_struct_assembly_gen.assembly_id"),
+        _list(d, "_pdbx_struct_assembly_gen.oper_expression"),
+        _list(d, "_pdbx_struct_assembly_gen.asym_id_list"),
+    ):
         poly, het = [], []
         for la in asyms.split(","):
             la = la.strip()
@@ -116,9 +124,14 @@ def _mmcif_meta(path: Path) -> dict:
         a = assemblies.setdefault(aid, {"id": aid, "details": det, "author_defined": "author" in det, "gens": []})
         a["gens"].append({"polymer_chains": poly, "het_residues": het, "opers": parse_oper_expression(expr)})
 
-    return {"format": "mmcif", "entities": entities, "operators": ops,
-            "assemblies": list(assemblies.values()), "label2auth": dict(label2auth),
-            "hetnam": {e["resname"]: e["description"] for e in entities.values() if "resname" in e}}
+    return {
+        "format": "mmcif",
+        "entities": entities,
+        "operators": ops,
+        "assemblies": list(assemblies.values()),
+        "label2auth": dict(label2auth),
+        "hetnam": {e["resname"]: e["description"] for e in entities.values() if "resname" in e},
+    }
 
 
 # ------------------------------------------------------------------ PDB
@@ -129,8 +142,11 @@ def _pdb_meta(path: Path) -> dict:
         mid = block.split(";")[0].strip()
         mol = re.search(r"MOLECULE:\s*([^;]*)", block)
         ch = re.search(r"CHAIN:\s*([^;]*)", block)
-        entities[mid] = {"type": "polymer", "description": mol.group(1).strip() if mol else "",
-                         "chains": [c.strip() for c in ch.group(1).split(",")] if ch else []}
+        entities[mid] = {
+            "type": "polymer",
+            "description": mol.group(1).strip() if mol else "",
+            "chains": [c.strip() for c in ch.group(1).split(",")] if ch else [],
+        }
     hetnam: dict[str, str] = {}
     for l in lines:
         if l.startswith("HETNAM"):
@@ -176,16 +192,23 @@ def _pdb_meta(path: Path) -> dict:
                 if a.chain in g["polymer_chains"] and k not in keys:
                     keys.append(k)
             g["het_residues"] = keys
-    return {"format": "pdb", "entities": entities, "operators": ops, "assemblies": assemblies,
-            "label2auth": {}, "hetnam": hetnam}
+    return {
+        "format": "pdb",
+        "entities": entities,
+        "operators": ops,
+        "assemblies": assemblies,
+        "label2auth": {},
+        "hetnam": hetnam,
+    }
 
 
 def read_metadata(path: Path) -> dict:
     path = Path(path)
     meta = _mmcif_meta(path) if path.suffix.lower() in (".cif", ".mmcif") else _pdb_meta(path)
     meta["source"] = str(path)
-    meta["chain_entity"] = {c: eid for eid, e in meta["entities"].items()
-                            if e["type"] == "polymer" for c in e["chains"]}
+    meta["chain_entity"] = {
+        c: eid for eid, e in meta["entities"].items() if e["type"] == "polymer" for c in e["chains"]
+    }
     return meta
 
 
@@ -198,11 +221,12 @@ def read_raw_atoms(path: Path, distinct_rmsd: float = 0.5) -> tuple[list[Atom], 
     records = altlocs.parse_all_atoms(Path(path))
     atoms, groups = altlocs.resolve(records)
     groups = [altlocs.analyse(g, distinct_rmsd) for g in groups]
-    stats = {"altloc_atoms": sum(1 for _, alt in records if alt),
-             "hydrogens": sum(a.element in ("H", "D") for a in atoms),
-             "altloc_residues": len(groups),
-             "altloc_hets": [f"{g['resname']}{g['resseq']}{g['chain']}" for g in groups
-                             if g["resname"] not in POLYMER_RES]}
+    stats = {
+        "altloc_atoms": sum(1 for _, alt in records if alt),
+        "hydrogens": sum(a.element in ("H", "D") for a in atoms),
+        "altloc_residues": len(groups),
+        "altloc_hets": [f"{g['resname']}{g['resseq']}{g['chain']}" for g in groups if g["resname"] not in POLYMER_RES],
+    }
     return atoms, stats, groups
 
 

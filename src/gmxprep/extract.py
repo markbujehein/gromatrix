@@ -1,7 +1,7 @@
 """[C] Sub-unit extraction with spatial ligand mapping and completeness scoring.
 
-    gmxprep-extract --batch-dir B [--in fixed] [--out units] [--ids 1XVP ...]
-                    [--targets CID[,RES][@ID]] [--target-chains X[,Y][@ID]] [--expect RES[:n],...]
+    gmxprep-extract --batch-dir B [--in fixed] [--out units] [--ids 1ABC ...]
+                    [--targets LIG[,RES][@ID]] [--target-chains X[,Y][@ID]] [--expect RES[:n],...]
                     [--assembly auto|none|N] [--ligand-cutoff 4.5] [--contact-cutoff 5.0]
                     [--min-contacts 10] [--max-chains 12] [--unit CANDIDATE_ID] [--allow-incomplete]
 
@@ -18,12 +18,15 @@ Algorithm (per structure):
      Soft score: fraction of all HET types in the deposit that the unit carries.
   4. Ranking: complete > coverage > author-defined > fewer chains >
      larger interfaces > fewer missing residues > lower mean Cα B-factor.
-     For 1XVP this selects assembly 2 (C,D,G,H): the only complete
-     author-defined heterodimer, since CITCO is bound to chain D alone.
+     So when copies in the asymmetric unit differ in which ligands they
+     hold, the copy that holds the declared targets wins, whatever its order
+     in the file. HET membership in assemblies follows the chain each HET
+     physically binds, not its deposited chain label.
   5. Matrix slicing. Writes enzyme.pdb (+ cofactors), target_<T>.pdb and
      complex_<T>.pdb with author numbering, TER records at breaks, and
      unit.json documenting every candidate and every ligand assignment.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -54,16 +57,16 @@ class ExtractionError(RuntimeError):
 
 @dataclass
 class Res:
-    chain: str      # chain ID inside the candidate (after collision renaming)
-    origin: str     # author chain in the deposit
-    oper: str       # operator label; "1" = identity / asymmetric unit
+    chain: str  # chain ID inside the candidate (after collision renaming)
+    origin: str  # author chain in the deposit
+    oper: str  # operator label; "1" = identity / asymmetric unit
     resname: str
     resseq: int
     icode: str
-    kind: str       # polymer | ligand | ion | water
+    kind: str  # polymer | ligand | ion | water
     atoms: list[Atom]
     xyz: np.ndarray
-    R: np.ndarray | None = None   # operator that placed this copy (None = identity)
+    R: np.ndarray | None = None  # operator that placed this copy (None = identity)
     t: np.ndarray | None = None
 
     @property
@@ -77,10 +80,10 @@ class Res:
 @dataclass
 class Candidate:
     id: str
-    source: str             # assembly | au-unit | au
+    source: str  # assembly | au-unit | au
     author_defined: bool
     residues: list[Res]
-    assignment: dict[int, dict] = field(default_factory=dict)   # residue index -> {chain, contacts, min_dist}
+    assignment: dict[int, dict] = field(default_factory=dict)  # residue index -> {chain, contacts, min_dist}
     orphans: list[int] = field(default_factory=list)
     metrics: dict = field(default_factory=dict)
 
@@ -103,8 +106,19 @@ def load_au(path: Path) -> list[Res]:
     out = []
     for res in residues([a for a in read_pdb(path) if a.element not in ("H", "D")]):
         a0 = res[0]
-        out.append(Res(a0.chain, a0.chain, "1", a0.resname, a0.resseq, a0.icode, _kind(a0.resname, len(res)),
-                       res, np.array([[a.x, a.y, a.z] for a in res])))
+        out.append(
+            Res(
+                a0.chain,
+                a0.chain,
+                "1",
+                a0.resname,
+                a0.resseq,
+                a0.icode,
+                _kind(a0.resname, len(res)),
+                res,
+                np.array([[a.x, a.y, a.z] for a in res]),
+            )
+        )
     return out
 
 
@@ -125,7 +139,8 @@ def chain_contacts(res: list[Res], cutoff: float) -> Counter:
         ca, cb = res[a].chain, res[b].chain
         if ca == cb or (a, b) in seen:
             continue
-        seen.add((a, b)); seen.add((b, a))
+        seen.add((a, b))
+        seen.add((b, a))
         out[tuple(sorted((ca, cb)))] += 1
     return out
 
@@ -153,15 +168,25 @@ def assign_hets(res: list[Res], cutoff: float) -> tuple[dict[int, dict], list[in
             orphans.append(i)
             continue
         best = max(hits, key=lambda c: (hits[c], -mind[c]))
-        assignment[i] = {"chain": best, "contacts": int(hits[best]), "min_dist": round(mind[best], 2),
-                         "other_chains": {c: int(n) for c, n in hits.items() if c != best}}
+        assignment[i] = {
+            "chain": best,
+            "contacts": int(hits[best]),
+            "min_dist": round(mind[best], 2),
+            "other_chains": {c: int(n) for c, n in hits.items() if c != best},
+        }
     return assignment, orphans
 
 
 # ------------------------------------------------------------------ candidates
-def build_assembly(asm: dict, au: list[Res], ops: dict) -> Candidate:
+def build_assembly(asm: dict, au: list[Res], ops: dict, het_chain: dict | None = None) -> Candidate:
     """Apply assembly operators. Identity copies keep their author chain IDs;
-    every other copy gets an unused ID, so chain IDs never collide."""
+    every other copy gets an unused ID, so chain IDs never collide.
+
+    A HET joins an operator copy when the chain it physically binds (`het_chain`,
+    from the AU-wide spatial assignment) is in that copy. Deposited chain labels
+    for HETs are not trusted, because a ligand labelled with one chain can sit in another
+    chain's pocket. The deposit's own membership list is used only for HETs that touch no chain."""
+    het_chain = het_chain or {}
     plan = []  # (residue, op_label, matrix)
     for gen in asm["gens"]:
         poly = set(gen["polymer_chains"])
@@ -170,14 +195,20 @@ def build_assembly(asm: dict, au: list[Res], ops: dict) -> Candidate:
             op = compose(ops, seq)
             label = "x".join(seq)
             for r in au:
-                if (r.kind == "polymer" and r.origin in poly) or (r.kind != "polymer" and r.key in hets):
+                if r.kind == "polymer":
+                    member = r.origin in poly
+                elif r.key in het_chain:
+                    member = het_chain[r.key] in poly
+                else:
+                    member = r.key in hets
+                if member:
                     plan.append((r, label, op))
     ids: dict[tuple[str, str], str] = {}
     for r, label, op in plan:  # pass 1: identity copies keep author IDs
         if is_identity(op) and (r.origin, label) not in ids and r.origin not in ids.values():
             ids[(r.origin, label)] = r.origin
     reserved = {r.chain for r in au}
-    for r, label, op in plan:  # pass 2: everything else gets a fresh ID
+    for r, label, _op in plan:  # pass 2: everything else gets a fresh ID
         if (r.origin, label) not in ids:
             used = set(ids.values()) | reserved
             free = next((c for c in CHAIN_POOL if c not in used), None)
@@ -189,8 +220,7 @@ def build_assembly(asm: dict, au: list[Res], ops: dict) -> Candidate:
         cid = ids[(r.origin, label)]
         xyz = r.xyz @ np.array(op["R"]).T + np.array(op["t"])
         atoms = [replace(a, chain=cid, x=float(p[0]), y=float(p[1]), z=float(p[2])) for a, p in zip(r.atoms, xyz)]
-        out.append(replace(r, chain=cid, oper=label, atoms=atoms, xyz=xyz,
-                           R=np.array(op["R"]), t=np.array(op["t"])))
+        out.append(replace(r, chain=cid, oper=label, atoms=atoms, xyz=xyz, R=np.array(op["R"]), t=np.array(op["t"])))
     return Candidate(f"assembly-{asm['id']}", "assembly", bool(asm.get("author_defined")), out)
 
 
@@ -255,8 +285,7 @@ def subset(au: list[Res], members: tuple[str, ...], assignment: dict, name: str,
 
 
 # ------------------------------------------------------------------ scoring
-def score(c: Candidate, req: dict, target_chains: set[str], all_types: set[str], gaps: list[dict],
-          a) -> None:
+def score(c: Candidate, req: dict, target_chains: set[str], all_types: set[str], gaps: list[dict], a) -> None:
     c.assignment, c.orphans = assign_hets(c.residues, a.ligand_cutoff)
     inv = Counter(c.residues[i].resname for i in c.assignment if c.residues[i].kind in ("ligand", "ion"))
     origins = {r.origin for r in c.residues if r.kind == "polymer"}
@@ -267,9 +296,14 @@ def score(c: Candidate, req: dict, target_chains: set[str], all_types: set[str],
     open_res = sum(g["n"] for g in gaps if not g["modelled"] and g["chain"] in origins)
     coverage = len(set(inv) & all_types) / len(all_types) if all_types else 1.0
     c.metrics = {
-        "complete": not missing and not missing_chains, "missing": missing, "missing_target_chains": missing_chains,
-        "coverage": round(coverage, 3), "inventory": dict(inv), "n_chains": len(c.chains),
-        "interface_contacts": int(sum(contacts.values())), "unmodelled_residues": open_res,
+        "complete": not missing and not missing_chains,
+        "missing": missing,
+        "missing_target_chains": missing_chains,
+        "coverage": round(coverage, 3),
+        "inventory": dict(inv),
+        "n_chains": len(c.chains),
+        "interface_contacts": int(sum(contacts.values())),
+        "unmodelled_residues": open_res,
         "mean_ca_b": round(float(np.mean(ca_b)), 1) if ca_b else None,
         "orphans": [c.residues[i].label() for i in c.orphans if c.residues[i].kind != "water"],
     }
@@ -277,8 +311,15 @@ def score(c: Candidate, req: dict, target_chains: set[str], all_types: set[str],
 
 def rank_key(c: Candidate):
     m = c.metrics
-    return (not m["complete"], -m["coverage"], not c.author_defined, m["n_chains"],
-            -m["interface_contacts"], m["unmodelled_residues"], m["mean_ca_b"] or 0.0)
+    return (
+        not m["complete"],
+        -m["coverage"],
+        not c.author_defined,
+        m["n_chains"],
+        -m["interface_contacts"],
+        m["unmodelled_residues"],
+        m["mean_ca_b"] or 0.0,
+    )
 
 
 # ------------------------------------------------------------------ slicing
@@ -311,14 +352,18 @@ def with_altloc(r: Res, groups: dict, letter: str) -> Res:
     return replace(r, atoms=atoms, xyz=np.array([[a.x, a.y, a.z] for a in atoms]))
 
 
-def clash_report(lig: Res, others: list[Res], cutoff: float = 2.2) -> dict:
-    """Heavy-atom contacts closer than `cutoff` Å between a ligand pose and its surroundings."""
+def clash_report(lig: Res, others: list[Res], cutoff: float = 2.2, contact: float = 4.5) -> dict:
+    """Clashes (< `cutoff` Å) and contacts (< `contact` Å) between a ligand pose and its surroundings."""
     env = [r for r in others if r is not lig and r.kind != "water"]
     if not env:
-        return {"min_dist": None, "clashes": 0}
+        return {"min_dist": None, "clashes": 0, "contacts": 0}
     tree = cKDTree(np.concatenate([r.xyz for r in env]))
     d, _ = tree.query(lig.xyz)
-    return {"min_dist": round(float(d.min()), 2), "clashes": int((d < cutoff).sum())}
+    return {
+        "min_dist": round(float(d.min()), 2),
+        "clashes": int((d < cutoff).sum()),
+        "contacts": int((d < contact).sum()),
+    }
 
 
 def plan_altlocs(c: Candidate, targets: list[str], groups: dict, mode: str) -> dict[str, dict]:
@@ -336,20 +381,34 @@ def plan_altlocs(c: Candidate, targets: list[str], groups: dict, mode: str) -> d
         elif mode == "primary":
             plan[t] = {"branch": False, "reason": "--altloc primary", "letters": letters}
         elif mode == "auto" and not any(g["distinct"] for g in gs):
-            plan[t] = {"branch": False, "letters": letters,
-                       "reason": "conformers equivalent within --altloc-rmsd (symmetry-corrected); primary used",
-                       "sym_rmsd": {f"{g['resname']}{g['resseq']}{g['chain']}": {L: r["sym_rmsd"] for L, r in
-                                    g["analysis"].items()} for g in gs}}
+            plan[t] = {
+                "branch": False,
+                "letters": letters,
+                "reason": "conformers equivalent within --altloc-rmsd (symmetry-corrected); primary used",
+                "sym_rmsd": {
+                    f"{g['resname']}{g['resseq']}{g['chain']}": {L: r["sym_rmsd"] for L, r in g["analysis"].items()}
+                    for g in gs
+                },
+            }
         elif len(letters) < 2:
-            plan[t] = {"branch": False, "reason": "fewer than two geometrically consistent conformers",
-                       "letters": letters}
+            plan[t] = {
+                "branch": False,
+                "reason": "fewer than two geometrically consistent conformers",
+                "letters": letters,
+            }
         else:
             plan[t] = {"branch": True, "letters": letters, "reason": f"--altloc {mode}"}
     return plan
 
 
-def slice_matrix(c: Candidate, targets: list[str], target_chains: set[str], outdir: Path,
-                 groups: dict | None = None, alt_plan: dict | None = None) -> dict:
+def slice_matrix(
+    c: Candidate,
+    targets: list[str],
+    target_chains: set[str],
+    outdir: Path,
+    groups: dict | None = None,
+    alt_plan: dict | None = None,
+) -> dict:
     groups, alt_plan = groups or {}, alt_plan or {}
     used = {(r.chain, r.resseq, r.icode) for r in c.residues}
     tchains = {r.chain for r in c.residues if r.kind == "polymer" and r.origin in target_chains}
@@ -365,7 +424,10 @@ def slice_matrix(c: Candidate, targets: list[str], target_chains: set[str], outd
         write_pdb(outdir / name, [a for r in res_list for a in r.atoms])
         return name
 
-    files = {"unit": write("unit.pdb", poly + [r for _, r in hets]), "enzyme": write("enzyme.pdb", enzyme_poly + enzyme_het)}
+    files = {
+        "unit": write("unit.pdb", poly + [r for _, r in hets]),
+        "enzyme": write("enzyme.pdb", enzyme_poly + enzyme_het),
+    }
     for t in targets:
         inst = [(i, r) for i, r in hets if r.resname == t]
         if not inst:
@@ -386,12 +448,20 @@ def slice_matrix(c: Candidate, targets: list[str], target_chains: set[str], outd
             if clash["min_dist"] is not None and clash["min_dist"] < 1.5:
                 plan["branches"][L]["skipped"] = "severe clash with environment (< 1.5 Å)"
                 continue
+            if clash["contacts"] == 0:
+                # Some deposits store a second copy of the ligand, bound at another site,
+                # as an altloc of the same residue. That is not a conformer of this pose.
+                plan["branches"][L]["skipped"] = (
+                    "pose does not touch this unit: an alternate copy bound elsewhere in the deposit, not a conformer"
+                )
+                continue
             files[f"target_{t}_alt{L}"] = write(f"target_{t}_alt{L}.pdb", [lead_L])
             files[f"complex_{t}_alt{L}"] = write(f"complex_{t}_alt{L}.pdb", env + ligs)
     if tchains:
         tag = "".join(sorted(tchains))
-        t_res = [r for r in poly if r.chain in tchains] + \
-                [r for i, r in hets if c.assignment[i]["chain"] in tchains and r.resname not in targets]
+        t_res = [r for r in poly if r.chain in tchains] + [
+            r for i, r in hets if c.assignment[i]["chain"] in tchains and r.resname not in targets
+        ]
         files[f"target_{tag}"] = write(f"target_{tag}.pdb", t_res)
         files[f"complex_{tag}"] = write(f"complex_{tag}.pdb", enzyme_poly + enzyme_het + t_res)
     return files
@@ -399,7 +469,7 @@ def slice_matrix(c: Candidate, targets: list[str], target_chains: set[str], outd
 
 # ------------------------------------------------------------------ driver
 def _scoped(spec: str | None, pid: str) -> list[str]:
-    """'CID,F15@1XVP,ABC@2ABC' -> names that apply to `pid`."""
+    """'LIG,COF@1ABC,XYZ@2ABC' -> names that apply to `pid`."""
     out = []
     for item in (spec or "").split(","):
         item = item.strip()
@@ -414,7 +484,9 @@ def _scoped(spec: str | None, pid: str) -> list[str]:
 def extract_one(pdb: Path, out_root: Path, a) -> dict:
     pid = pdb.stem.upper()
     meta_p = pdb.with_suffix(".meta.json")
-    meta = json.loads(meta_p.read_text()) if meta_p.exists() else {"assemblies": [], "operators": {}, "chain_entity": {}}
+    meta = (
+        json.loads(meta_p.read_text()) if meta_p.exists() else {"assemblies": [], "operators": {}, "chain_entity": {}}
+    )
     gaps = meta.get("fix", {}).get("gaps", [])
     warnings: list[str] = []
     if not meta_p.exists():
@@ -431,12 +503,20 @@ def extract_one(pdb: Path, out_root: Path, a) -> dict:
 
     # Candidates
     cands: list[Candidate] = []
+    au_assign, _ = assign_hets(au, a.ligand_cutoff)
+    het_chain = {au[i].key: v["chain"] for i, v in au_assign.items()}
+    relabelled = [
+        f"{au[i].label()} binds {v['chain']}"
+        for i, v in au_assign.items()
+        if au[i].kind in ("ligand", "ion") and v["chain"] != au[i].origin
+    ]
+    if relabelled:
+        warnings.append(f"HETs whose deposited chain label differs from the chain they bind: {relabelled}")
     if a.assembly != "none":
         for asm in meta.get("assemblies", []):
             if a.assembly in ("auto", asm["id"]):
-                cands.append(build_assembly(asm, au, meta["operators"]))
+                cands.append(build_assembly(asm, au, meta["operators"], het_chain))
     if a.assembly in ("auto", "none"):
-        au_assign, _ = assign_hets(au, a.ligand_cutoff)
         contacts = chain_contacts(au, a.contact_cutoff)
         for members in au_units(au, meta.get("chain_entity", {}), contacts, a.min_contacts):
             cands.append(subset(au, members, au_assign, "au-" + "".join(members), "au-unit"))
@@ -457,10 +537,28 @@ def extract_one(pdb: Path, out_root: Path, a) -> dict:
         score(c, req, target_chains, all_types, gaps, a)
     ranked = sorted(uniq, key=rank_key)
 
-    table = [{"id": c.id, "source": c.source, "author_defined": c.author_defined, "chains": c.chains,
-              **{k: c.metrics[k] for k in ("complete", "missing", "coverage", "inventory", "n_chains",
-                                           "interface_contacts", "unmodelled_residues", "mean_ca_b")}}
-             for c in ranked]
+    table = [
+        {
+            "id": c.id,
+            "source": c.source,
+            "author_defined": c.author_defined,
+            "chains": c.chains,
+            **{
+                k: c.metrics[k]
+                for k in (
+                    "complete",
+                    "missing",
+                    "coverage",
+                    "inventory",
+                    "n_chains",
+                    "interface_contacts",
+                    "unmodelled_residues",
+                    "mean_ca_b",
+                )
+            },
+        }
+        for c in ranked
+    ]
     outdir = out_root / pid
     outdir.mkdir(parents=True, exist_ok=True)
     chosen = next((c for c in ranked if c.id == a.unit), None) if a.unit else ranked[0]
@@ -468,8 +566,10 @@ def extract_one(pdb: Path, out_root: Path, a) -> dict:
         raise ExtractionError(f"--unit {a.unit} not among candidates {[c.id for c in ranked]}")
     m = chosen.metrics
     if not m["complete"]:
-        msg = (f"no candidate unit contains all required ligands/chains; best '{chosen.id}' lacks "
-               f"{m['missing'] or ''}{m['missing_target_chains'] or ''}")
+        msg = (
+            f"no candidate unit contains all required ligands/chains; best '{chosen.id}' lacks "
+            f"{m['missing'] or ''}{m['missing_target_chains'] or ''}"
+        )
         if not a.allow_incomplete:
             (outdir / "unit.json").write_text(json.dumps({"id": pid, "error": msg, "candidates": table}, indent=1))
             raise ExtractionError(msg + " (see unit.json; --allow-incomplete to proceed)")
@@ -490,37 +590,65 @@ def extract_one(pdb: Path, out_root: Path, a) -> dict:
     for t, p in alt_plan.items():
         if p.get("branch"):
             made = [L for L, b in p["branches"].items() if "skipped" not in b]
-            warnings.append(f"{t}: matrix branched over conformers {made} ({p['reason']}) into "
-                            f"complex_{t}_alt<L>.pdb - simulate each as its own complex")
+            for L, b in p["branches"].items():
+                if "skipped" in b:
+                    warnings.append(f"{t}: altloc {L} not used - {b['skipped']}")
+            if len(made) > 1:
+                warnings.append(
+                    f"{t}: matrix branched over conformers {made} ({p['reason']}) into "
+                    f"complex_{t}_alt<L>.pdb - simulate each as its own complex"
+                )
+            elif made:
+                warnings.append(
+                    f"{t}: only altloc {made[0]} is a valid pose here; written as complex_{t}_alt{made[0]}.pdb"
+                )
         elif p.get("letters"):
             warnings.append(f"{t}: {p['reason']}")
 
     report = {
-        "id": pid, "selected": chosen.id, "source": chosen.source, "author_defined": chosen.author_defined,
+        "id": pid,
+        "selected": chosen.id,
+        "source": chosen.source,
+        "author_defined": chosen.author_defined,
         "chains": chosen.chains,
         "chain_origin": {r.chain: f"{r.origin}/op{r.oper}" for r in chosen.residues if r.kind == "polymer"},
-        "targets": targets, "target_chains": sorted(target_chains), "required": req, "metrics": m,
-        "ligand_assignment": [{"residue": chosen.residues[i].label(), **v} for i, v in chosen.assignment.items()
-                              if chosen.residues[i].kind != "water"],
+        "targets": targets,
+        "target_chains": sorted(target_chains),
+        "required": req,
+        "metrics": m,
+        "ligand_assignment": [
+            {"residue": chosen.residues[i].label(), **v}
+            for i, v in chosen.assignment.items()
+            if chosen.residues[i].kind != "water"
+        ],
         "candidates": table,
-        "altlocs": alt_plan, "files": files, "warnings": warnings,
+        "altlocs": alt_plan,
+        "files": files,
+        "warnings": warnings,
     }
     (outdir / "unit.json").write_text(json.dumps(report, indent=1))
-    return {"id": pid, "selected": chosen.id, "chains": chosen.chains, "inventory": m["inventory"],
-            "runner_up": ranked[1].id if len(ranked) > 1 and ranked[1] is not chosen else None,
-            "files": sorted(files.values()), "warnings": warnings}
+    return {
+        "id": pid,
+        "selected": chosen.id,
+        "chains": chosen.chains,
+        "inventory": m["inventory"],
+        "runner_up": ranked[1].id if len(ranked) > 1 and ranked[1] is not chosen else None,
+        "files": sorted(files.values()),
+        "warnings": warnings,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="gmxprep-extract", description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        prog="gmxprep-extract", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--batch-dir", type=Path, required=True)
     ap.add_argument("--in", dest="indir", default="fixed")
     ap.add_argument("--out", default="units")
     ap.add_argument("--ids", nargs="+")
-    ap.add_argument("--targets", help="target ligand residue names, e.g. CID or CID@1XVP,LIG@2ABC")
-    ap.add_argument("--target-chains", help="author chains of a protein/peptide target, e.g. E@1XVP")
-    ap.add_argument("--expect", help="additional required HETs, RES[:count], e.g. F15:1,HEM:2")
+    ap.add_argument("--targets", help="target ligand residue names, e.g. LIG or LIG@1ABC,XYZ@2ABC")
+    ap.add_argument("--target-chains", help="author chains of a protein/peptide target, e.g. E@1ABC")
+    ap.add_argument("--expect", help="additional required HETs, RES[:count], e.g. COF:1,HEM:2")
     ap.add_argument("--assembly", default="auto", help="auto | none (AU-derived units only) | assembly id")
     ap.add_argument("--ligand-cutoff", "--het-cutoff", type=float, default=4.5, help="Å, HET-to-chain mapping")
     ap.add_argument("--contact-cutoff", type=float, default=5.0, help="Å, chain-chain interface residues")
@@ -528,9 +656,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--max-chains", type=int, default=12)
     ap.add_argument("--unit", help="force a candidate id from unit.json, e.g. assembly-1 or au-ABEF")
     ap.add_argument("--allow-incomplete", action="store_true")
-    ap.add_argument("--altloc", default="auto", choices=["auto", "branch", "primary"],
-                    help="target ligands with alternate conformers: branch only distinct ones (auto), "
-                         "always branch, or always use the primary conformer")
+    ap.add_argument(
+        "--altloc",
+        default="auto",
+        choices=["auto", "branch", "primary"],
+        help="target ligands with alternate conformers: branch only distinct ones (auto), "
+        "always branch, or always use the primary conformer",
+    )
     a = ap.parse_args(argv)
 
     indir, outdir = a.batch_dir / a.indir, a.batch_dir / a.out

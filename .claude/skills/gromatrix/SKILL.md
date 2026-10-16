@@ -57,7 +57,7 @@ Run the steps in order. Each step reads the previous step's directory. Full flag
 
 **Step C needs to know the target.** Ask which HET residue (or chain) is the target, and which
 cofactors must stay with the enzyme (`--expect`). Without that, C cannot guarantee that the chosen
-sub-unit contains them. Some deposits bind a ligand in only one copy (1XVP: CITCO in chain D only).
+sub-unit contains them. Deposits often bind a ligand in only one of several copies, or label it with the wrong chain.
 After C, read `units/<ID>/unit.json` → `candidates` only when the selection surprises you or the
 JSON reports warnings. Report the selected unit and why the runner-up lost.
 

@@ -3,3 +3,7 @@ __pycache__/
 *.skill
 .pytest_cache/
 /runs/
+coverage.xml
+.coverage
+.pixi/
+.ruff_cache/

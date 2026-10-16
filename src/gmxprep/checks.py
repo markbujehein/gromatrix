@@ -12,6 +12,7 @@ made strict and automatic.
 * mdrun log parsing: EM convergence (Fmax < emtol), LINCS warnings,
   fatal errors, "Finished mdrun"
 """
+
 from __future__ import annotations
 
 import re
@@ -99,13 +100,15 @@ def top_vs_gro(top: Path, gro: Path, search: list[Path]) -> dict:
             problems.append(f"[ molecules ] lists '{name}' but no moleculetype of that name is included")
             continue
         charge += mt["charge"] * n
-        block = atoms[pos:pos + mt["natoms"] * n]
+        block = atoms[pos : pos + mt["natoms"] * n]
         stray = {a.resname for a in block} - mt["resnames"]
         # gro residue names are cut to 5 characters
         stray = {r for r in stray if not any(x.startswith(r) for x in mt["resnames"])}
         if stray and not problems:
-            problems.append(f"atoms {pos + 1}-{pos + len(block)} should be '{name}' "
-                            f"({sorted(mt['resnames'])}) but the .gro has residues {sorted(stray)[:5]}")
+            problems.append(
+                f"atoms {pos + 1}-{pos + len(block)} should be '{name}' "
+                f"({sorted(mt['resnames'])}) but the .gro has residues {sorted(stray)[:5]}"
+            )
         pos += mt["natoms"] * n
     if pos != len(atoms):
         problems.append(f"topology describes {pos} atoms, {gro.name} has {len(atoms)}")
@@ -114,13 +117,16 @@ def top_vs_gro(top: Path, gro: Path, search: list[Path]) -> dict:
 
 def assert_integer_charge(q: float, where: str, tol: float = 1e-3) -> int:
     if abs(q - round(q)) > tol:
-        raise CheckError(f"{where}: net charge {q:.4f} is not an integer - a ligand or residue "
-                         "charge set is broken (check params/<RES>/meta.json and any edited .rtp)")
+        raise CheckError(
+            f"{where}: net charge {q:.4f} is not an integer - a ligand or residue "
+            "charge set is broken (check params/<RES>/meta.json and any edited .rtp)"
+        )
     return int(round(q))
 
 
-def write_index(gro: Path, top: Path, search: list[Path], out: Path, protein_mol: str | None,
-                ligand_mols: list[str]) -> dict[str, int]:
+def write_index(
+    gro: Path, top: Path, search: list[Path], out: Path, protein_mol: str | None, ligand_mols: list[str]
+) -> dict[str, int]:
     """Named groups computed from [ molecules ]: System, Protein, one per
     ligand, Solute (everything before the first SOL) and Solvent (SOL plus
     the ions genion appended)."""
@@ -144,7 +150,7 @@ def write_index(gro: Path, top: Path, search: list[Path], out: Path, protein_mol
         if not idx:
             continue
         lines.append(f"[ {g} ]")
-        lines += [" ".join(f"{i:>6d}" for i in idx[k:k + 15]) for k in range(0, len(idx), 15)]
+        lines += [" ".join(f"{i:>6d}" for i in idx[k : k + 15]) for k in range(0, len(idx), 15)]
     Path(out).write_text("\n".join(lines) + "\n")
     return {g: len(v) for g, v in groups.items() if v}
 
@@ -164,6 +170,8 @@ def parse_em_log(log: Path, emtol: float) -> dict:
 
 def scan_md_log(log: Path) -> dict:
     text = Path(log).read_text(errors="replace") if Path(log).exists() else ""
-    return {"finished": "Finished mdrun" in text,
-            "lincs_warnings": len(re.findall(r"LINCS WARNING", text, re.I)),
-            "fatal": bool(re.search(r"Fatal error", text))}
+    return {
+        "finished": "Finished mdrun" in text,
+        "lincs_warnings": len(re.findall(r"LINCS WARNING", text, re.I)),
+        "fatal": bool(re.search(r"Fatal error", text)),
+    }

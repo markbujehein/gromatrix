@@ -1,5 +1,6 @@
 """Minimal HTTP client (stdlib only) with retries, plus a content-addressed
 download cache used by steps A and E."""
+
 from __future__ import annotations
 
 import gzip
@@ -21,8 +22,9 @@ class HTTPError(RuntimeError):
         self.url, self.status = url, status
 
 
-def get(url: str, data: bytes | None = None, retries: int = 4, timeout: float = 60.0,
-        headers: dict | None = None) -> bytes:
+def get(
+    url: str, data: bytes | None = None, retries: int = 4, timeout: float = 60.0, headers: dict | None = None
+) -> bytes:
     """GET (or POST when `data` is given) with exponential backoff on 429/5xx
     and network errors. 404 and other 4xx fail immediately."""
     hdrs = {"User-Agent": USER_AGENT, **(headers or {})}
@@ -87,9 +89,13 @@ class Cache:
         tmp = f.with_suffix(f.suffix + ".part")
         tmp.write_bytes(blob)
         tmp.replace(f)  # atomic: never leave a half-written structure behind
-        self.entries[name] = {"url": url, "sha256": sha256(f), "bytes": f.stat().st_size,
-                              "fetched": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                              **(extra or {})}
+        self.entries[name] = {
+            "url": url,
+            "sha256": sha256(f),
+            "bytes": f.stat().st_size,
+            "fetched": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            **(extra or {}),
+        }
         self.save()
         return f, status
 

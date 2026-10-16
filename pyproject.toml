@@ -27,3 +27,23 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 markers = ["slow: end-to-end benchmarks (1XVP); deselect with -m 'not slow'"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# pyflakes, pycodestyle, isort, bugbear, pyupgrade, simplify-lite, numpy-specific rules
+select = ["F", "E", "W", "I", "B", "UP", "NPY", "RUF100"]
+ignore = [
+  "E741",  # `l` as a variable name is idiomatic for line-by-line PDB parsing
+  "B905",  # zip() without strict= is intentional where lengths are validated upstream
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
+
+[tool.coverage.run]
+source = ["gmxprep"]
+branch = true

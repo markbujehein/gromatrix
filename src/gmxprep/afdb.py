@@ -1,14 +1,15 @@
 """[E] Compare relaxed experimental sub-units with AlphaFold DB predictions.
 
-    gmxprep-afcompare --batch-dir B [--in relaxed] [--ids 1XVP ...]
-                      [--files enzyme.pdb target_*.pdb] [--uniprot C:P19793,D:Q14994[@ID]]
+    gmxprep-afcompare --batch-dir B [--in relaxed] [--ids 1ABC ...]
+                      [--files enzyme.pdb target_*.pdb] [--uniprot A:P12345,B:Q67890[@ID]]
                       [--plddt-min 70] [--min-length 30] [--tm-min 0.8] [--lddt-min 0.7]
                       [--out af_report.csv] [--afdb-dir afdb]
 
 Per protein chain:
-  1. UniProt accession: --uniprot if given, otherwise from SIFTS (PDBe API) using
-     the chain's *author* ID. Chains renamed during assembly building are traced
-     back through units/<ID>/unit.json.
+  1. UniProt accession: --uniprot if given, otherwise from SIFTS (PDBe API; RCSB
+     Data API when PDBe has no record) using the chain's *author* ID. For fusion
+     constructs the accession covering most of the chain is used. Chains renamed
+     during assembly building are traced back through units/<ID>/unit.json.
   2. AFDB model: the prediction API gives the current model URL (model version
      recorded). Files are cached by sha256 in <batch>/<afdb-dir>/.
   3. Residue correspondence by global sequence alignment of the experimental
@@ -27,6 +28,7 @@ Per protein chain:
   5. The AF model, superposed onto the experimental chain, is written to
      <batch>/af/<ID>/AF_<chain>_<UniProt>.pdb for visual inspection.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -44,10 +46,42 @@ from .pdbio import PROTEIN_RES, read_pdb, write_pdb
 
 AF_API = "https://alphafold.ebi.ac.uk/api/prediction/{acc}"
 SIFTS = "https://www.ebi.ac.uk/pdbe/api/mappings/uniprot/{pid}"
-THREE2ONE = {"ALA": "A", "ARG": "R", "ASN": "N", "ASP": "D", "CYS": "C", "GLN": "Q", "GLU": "E", "GLY": "G",
-             "HIS": "H", "ILE": "I", "LEU": "L", "LYS": "K", "MET": "M", "PHE": "F", "PRO": "P", "SER": "S",
-             "THR": "T", "TRP": "W", "TYR": "Y", "VAL": "V", "HID": "H", "HIE": "H", "HIP": "H", "HSD": "H",
-             "HSE": "H", "HSP": "H", "CYX": "C", "CYM": "C", "ASH": "D", "GLH": "E", "LYN": "K", "MSE": "M"}
+RCSB_ENTRY = "https://data.rcsb.org/rest/v1/core/entry/{pid}"
+RCSB_ENTITY = "https://data.rcsb.org/rest/v1/core/polymer_entity/{pid}/{eid}"
+THREE2ONE = {
+    "ALA": "A",
+    "ARG": "R",
+    "ASN": "N",
+    "ASP": "D",
+    "CYS": "C",
+    "GLN": "Q",
+    "GLU": "E",
+    "GLY": "G",
+    "HIS": "H",
+    "ILE": "I",
+    "LEU": "L",
+    "LYS": "K",
+    "MET": "M",
+    "PHE": "F",
+    "PRO": "P",
+    "SER": "S",
+    "THR": "T",
+    "TRP": "W",
+    "TYR": "Y",
+    "VAL": "V",
+    "HID": "H",
+    "HIE": "H",
+    "HIP": "H",
+    "HSD": "H",
+    "HSE": "H",
+    "HSP": "H",
+    "CYX": "C",
+    "CYM": "C",
+    "ASH": "D",
+    "GLH": "E",
+    "LYN": "K",
+    "MSE": "M",
+}
 
 
 # ------------------------------------------------------------------ geometry
@@ -133,16 +167,40 @@ def align(seq_exp: str, seq_af: str) -> list[tuple[int, int]]:
 
 
 def sifts_map(pid: str, cache_dir: Path) -> dict[str, str]:
+    """author chain -> UniProt accession. Fusion constructs map one chain to several
+    accessions, so the accession covering the most residues of that chain wins.
+    If PDBe has no SIFTS record, the RCSB Data API (also SIFTS-derived) is used instead."""
     f = cache_dir / f"sifts_{pid.lower()}.json"
     if f.exists():
-        data = json.loads(f.read_text())
-    else:
+        return json.loads(f.read_text())
+    try:
         data = get_json(SIFTS.format(pid=pid.lower()))
-        f.write_text(json.dumps(data))
+        cover: dict[str, dict[str, int]] = {}
+        for acc, v in data.get(pid.lower(), {}).get("UniProt", {}).items():
+            for m in v["mappings"]:
+                c = cover.setdefault(m["chain_id"], {})
+                c[acc] = c.get(acc, 0) + (m["unp_end"] - m["unp_start"] + 1)
+        out = {ch: max(c, key=c.get) for ch, c in cover.items()}
+    except HTTPError as e:
+        if e.status != 404:
+            raise
+        out = rcsb_map(pid)
+    f.write_text(json.dumps(out))
+    return out
+
+
+def rcsb_map(pid: str) -> dict[str, str]:
     out = {}
-    for acc, v in data.get(pid.lower(), {}).get("UniProt", {}).items():
-        for m in v["mappings"]:
-            out.setdefault(m["chain_id"], acc)
+    entry = get_json(RCSB_ENTRY.format(pid=pid.upper()))
+    for eid in entry.get("rcsb_entry_container_identifiers", {}).get("polymer_entity_ids", []):
+        ids = get_json(RCSB_ENTITY.format(pid=pid.upper(), eid=eid)).get(
+            "rcsb_polymer_entity_container_identifiers", {}
+        )
+        refs = [r for r in ids.get("reference_sequence_identifiers") or [] if r.get("database_name") == "UniProt"]
+        if refs:
+            best = max(refs, key=lambda r: r.get("entity_sequence_coverage") or 0)["database_accession"]
+            for ch in ids.get("auth_asym_ids", []):
+                out[ch] = best
     return out
 
 
@@ -175,13 +233,20 @@ def compare_chain(chain: str, exp_ca: list, acc: str, cache: Cache, a, out_dir: 
     plddt = np.array([model_ca[j].b for _, j in pairs])
     core = plddt >= a.plddt_min
     tm, r, t = tm_score(mod, ref, len(exp_ca))
-    res = {"af_entry": entry.get("entryId"), "af_version": entry.get("latestVersion"),
-           "L_exp": len(exp_ca), "aligned": len(pairs), "coverage": round(len(pairs) / len(exp_ca), 3),
-           "identity": round(ident, 3), "mean_plddt_aligned": round(float(plddt.mean()), 1),
-           "n_core": int(core.sum()),
-           "rmsd_all": round(rmsd_after_fit(mod, ref), 2),
-           "rmsd_core": round(rmsd_after_fit(mod[core], ref[core]), 2) if core.sum() >= 3 else None,
-           "tm_score": round(tm, 3), "lddt_ca": round(lddt_ca(mod, ref), 3)}
+    res = {
+        "af_entry": entry.get("entryId"),
+        "af_version": entry.get("latestVersion"),
+        "L_exp": len(exp_ca),
+        "aligned": len(pairs),
+        "coverage": round(len(pairs) / len(exp_ca), 3),
+        "identity": round(ident, 3),
+        "mean_plddt_aligned": round(float(plddt.mean()), 1),
+        "n_core": int(core.sum()),
+        "rmsd_all": round(rmsd_after_fit(mod, ref), 2),
+        "rmsd_core": round(rmsd_after_fit(mod[core], ref[core]), 2) if core.sum() >= 3 else None,
+        "tm_score": round(tm, 3),
+        "lddt_ca": round(lddt_ca(mod, ref), 3),
+    }
     flags = []
     if ident < 0.9:
         flags.append(f"sequence identity {ident:.2f}: check the UniProt mapping or engineered mutations")
@@ -194,8 +259,10 @@ def compare_chain(chain: str, exp_ca: list, acc: str, cache: Cache, a, out_dir: 
     full = read_pdb(model_path)
     xyz = np.array([[x.x, x.y, x.z] for x in full]) @ r.T + t
     out_dir.mkdir(parents=True, exist_ok=True)
-    write_pdb(out_dir / f"AF_{chain}_{acc}.pdb",
-              [replace(x, chain=chain, x=float(p[0]), y=float(p[1]), z=float(p[2])) for x, p in zip(full, xyz)])
+    write_pdb(
+        out_dir / f"AF_{chain}_{acc}.pdb",
+        [replace(x, chain=chain, x=float(p[0]), y=float(p[1]), z=float(p[2])) for x, p in zip(full, xyz)],
+    )
     return res
 
 
@@ -214,13 +281,14 @@ def _scoped_map(spec: str | None, pid: str) -> dict[str, str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="gmxprep-afcompare", description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        prog="gmxprep-afcompare", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--batch-dir", type=Path, required=True)
     ap.add_argument("--in", dest="indir", default="relaxed")
     ap.add_argument("--ids", nargs="+")
     ap.add_argument("--files", nargs="+", default=["enzyme.pdb", "target_*.pdb"])
-    ap.add_argument("--uniprot", help="explicit chain:accession map, e.g. C:P19793,D:Q14994@1XVP")
+    ap.add_argument("--uniprot", help="explicit chain:accession map, e.g. A:P12345,B:Q67890@1ABC")
     ap.add_argument("--plddt-min", type=float, default=70.0)
     ap.add_argument("--min-length", type=int, default=30)
     ap.add_argument("--tm-min", type=float, default=0.8)
@@ -277,17 +345,45 @@ def main(argv: list[str] | None = None) -> int:
         (a.batch_dir / "af").mkdir(exist_ok=True)
         (a.batch_dir / "af" / f"{pid}.json").write_text(json.dumps(details, indent=1))
 
-    cols = ["id", "chain", "origin_chain", "uniprot", "status", "af_entry", "af_version", "L_exp", "aligned",
-            "coverage", "identity", "mean_plddt_aligned", "n_core", "rmsd_all", "rmsd_core", "tm_score", "lddt_ca"]
+    cols = [
+        "id",
+        "chain",
+        "origin_chain",
+        "uniprot",
+        "status",
+        "af_entry",
+        "af_version",
+        "L_exp",
+        "aligned",
+        "coverage",
+        "identity",
+        "mean_plddt_aligned",
+        "n_core",
+        "rmsd_all",
+        "rmsd_core",
+        "tm_score",
+        "lddt_ca",
+    ]
     with open(a.batch_dir / a.out, "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore")
         w.writeheader()
         w.writerows(rows)
     scored = [r for r in rows if r.get("tm_score") is not None]
-    print(json.dumps({"ok": not failed, "report": str(a.batch_dir / a.out), "chains_scored": len(scored),
-                      "summary": [{k: r.get(k) for k in ("id", "chain", "uniprot", "rmsd_core", "tm_score", "lddt_ca",
-                                                         "status")} for r in rows],
-                      "flagged": flagged, "failed": failed}))
+    print(
+        json.dumps(
+            {
+                "ok": not failed,
+                "report": str(a.batch_dir / a.out),
+                "chains_scored": len(scored),
+                "summary": [
+                    {k: r.get(k) for k in ("id", "chain", "uniprot", "rmsd_core", "tm_score", "lddt_ca", "status")}
+                    for r in rows
+                ],
+                "flagged": flagged,
+                "failed": failed,
+            }
+        )
+    )
     return 0 if not failed else 1
 
 
