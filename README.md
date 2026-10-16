@@ -38,8 +38,33 @@ decision is driven by the deposition metadata, geometry and the user's declared 
 | F | `gmxprep-gmx plan / build / verify / smoke` | topologies, boxes, solvent, ions, `em.tpr`, `run.sh`, smoke test |
 
 Every command takes `--batch-dir`, prints **one JSON line** (`{"ok": ..., ...}`) and exits non-zero on
-failure. Verbose tool output goes to log files. Full flags: `.claude/skills/gromatrix/references/cli.md`.
-An agent skill (`.claude/skills/gromatrix/SKILL.md`) routes an AI agent through the same commands.
+failure. Verbose tool output goes to log files. `gmxprep-status --batch-dir B` summarises a batch
+and names the next step. Full flags for each step are in the `references/cli.md` of the matching
+agent skill (below).
+
+## Agent skills (Claude Code)
+
+The repository ships a **suite of four Claude Code skills** in `.claude/skills/`, not one
+monolithic skill. Claude Code discovers them automatically when you work in this repository. Each
+stage skill documents only its own commands, so an agent loads only the instructions for the stage
+it is on:
+
+| Skill | Scope | Commands it documents |
+|---|---|---|
+| `gromatrix` | Orchestrator: settles the forcefield, targets and protonation with the user; chains the stages; writes the final report | `gmxprep-status`, `gmxprep-gmx lock` |
+| `gromatrix-structure-prep` | Steps A–C: fetch, fix, sub-unit extraction, altlocs | `gmxprep-fetch`, `gmxprep-fix`, `gmxprep-extract` |
+| `gromatrix-validate` | Steps D–E: OpenMM integrity relaxation, AlphaFold comparison | `gmxprep-relax`, `gmxprep-afcompare` |
+| `gromatrix-gmx-builder` | Step F: manifest, GROMACS build, verify, smoke test | `gmxprep-gmx` |
+
+**Hand-off between skills.** All state lives in the batch directory; nothing has to survive in the
+agent's conversation memory:
+* every skill starts with `gmxprep-status`;
+* that command reads only the artefacts the steps write (lock, `fixed/*.meta.json`,
+  `units/*/unit.json`, `relaxed/*/relax.json`, `af/*.json`, `systems/*/system.json`);
+* it returns `next: {skill, command, why}`.
+
+So a fresh session, or a different agent, can resume any batch at the right stage. Each skill keeps
+its detailed flags and troubleshooting in its own `references/`, which are read only when needed.
 
 ## Validation
 
@@ -77,9 +102,11 @@ gromatrix/
 │   ├── mdp.py           # em/nvt/npt/md mdp with FF-specific non-bonded settings
 │   ├── gmx.py           # logged subprocess wrappers, .ff dir discovery, ions.itp parsing
 │   ├── pdbio.py         # dependency-free PDB/GRO I/O, residue classification
+│   ├── status.py        # gmxprep-status: batch progress + next step (skill hand-off contract)
 │   └── gmx_prep.py      # [F] CLI: lock / plan / build / verify / smoke
 ├── tests/                # unit tests + offline end-to-end regression (tests/data/)
-└── .claude/skills/gromatrix/         # agent skill: SKILL.md router + references/
+└── .claude/skills/                   # agent skills: gromatrix (orchestrator), gromatrix-structure-prep,
+                                      # gromatrix-validate, gromatrix-gmx-builder (each SKILL.md + references/)
 ```
 
 ## Batch directory (created by the pipeline)
