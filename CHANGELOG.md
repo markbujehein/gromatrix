@@ -1,0 +1,56 @@
+# Changelog
+
+## v1.0.0
+
+First public release.
+
+### Pipeline (`gmxprep-*` commands)
+- **A `gmxprep-fetch`**: RCSB download by ID, full-text or UniProt search. Downloads are cached and
+  verified by sha256, corrupted files are repaired, and entry revisions are tracked
+  (`--check-updates`).
+- **B `gmxprep-fix`**: PDBFixer clean-up.
+  - Mirrors OpenMM's label→author chain-ID rule.
+  - Builds on a primary-conformer copy of the input.
+  - Builds short loops; long gaps are split with TER.
+  - Strips hydrogens, waters and additives by policy.
+- **C `gmxprep-extract`**: completeness-first selection of the sub-unit across deposited
+  assemblies and stoichiometric asymmetric-unit units.
+  - Ligands follow the chain they physically bind.
+  - Alternate conformers branch only when genuinely distinct.
+  - Output: enzyme / target / complex files.
+- **D `gmxprep-relax`**: two-stage restrained OpenMM minimisation with explosion, distortion,
+  chain-break, clash and pocket-collapse gates.
+- **E `gmxprep-afcompare`**: AlphaFold DB comparison per protein chain: RMSD (all residues and
+  confident core), TM-score (agrees with TM-align within 0.003) and Cα-lDDT.
+- **F `gmxprep-gmx`**: GROMACS matrix builder with a batch-wide forcefield lock (AMBER / CHARMM
+  families).
+  - One shared parameter set per ligand (acpype/GAFF2 or CGenFF), with conflict detection.
+  - Atom-count and charge gates; a zero-warning `em.tpr`; named index groups; `run.sh`.
+  - `verify` and `smoke` subcommands.
+- **`gmxprep-status`**: batch progress plus the next step; the hand-off contract between agent
+  skills.
+
+### Claude agent toolkit
+- Four skills: the `gromatrix` orchestrator plus `gromatrix-structure-prep`,
+  `gromatrix-validate` and `gromatrix-gmx-builder`.
+- Shipped as reproducible `.zip` release assets with `SHA256SUMS`, installable on claude.ai or in
+  Claude Code without cloning.
+
+### Engineering
+- pixi environments with a committed lockfile.
+- GitHub Actions CI: Ruff, pytest with coverage on Python 3.10, 3.12 and 3.13, and skill
+  validation.
+- SHA-pinned actions, least-privilege permissions, and a coverage badge with no third-party
+  service.
+- Tag-triggered release workflow.
+
+### Validation
+- Offline end-to-end regression (1XVP) runs in CI.
+- 82-entry human PXR/CAR benchmark: [`benchmarks/pxr_car_validation.md`](benchmarks/pxr_car_validation.md).
+  It is a partial run: steps B, C and E on 16 entries, with step D pending on local hardware.
+
+### Known limitations
+- Step F has not yet been run against real GROMACS / acpype / CGenFF installations in CI. Confirm
+  locally with `pixi shell -e md`.
+- Covalent ligands and metal-containing cofactors are refused, not parameterised.
+- Crystal waters are not carried into step F.

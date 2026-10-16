@@ -63,8 +63,12 @@ only if the user says so.
 - Every command prints one JSON line (`{"ok": ...}`). Read it. Open logs only on failure.
 - A hard stop (forcefield mismatch, incomplete matrix, metal-containing ligand, high CGenFF
   penalty, failed relax gate) is a finding to report, not something to bypass with a flag.
-- If a command is missing, the package is not installed (`pixi install` or `pip install -e .`).
-  Don't improvise a replacement script.
+- If `gmxprep-status` is not found, the package is not installed where commands run. Give the
+  user the install. No clone is needed:
+  `conda create -n gromatrix -c conda-forge python=3.12 openmm pdbfixer rdkit biopython scipy pyyaml`,
+  then `pip install "gromatrix @ git+https://github.com/markbujehein/gromatrix"`. Step F also needs
+  `gromacs acpype openbabel` from conda-forge. Inside a clone, `pixi shell -e md` does all of this.
+  Never improvise a replacement script.
 
 ## Final report to the user
 

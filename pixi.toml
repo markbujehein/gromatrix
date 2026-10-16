@@ -1,11 +1,11 @@
-# Pixi workspace for gromatrix. Replaces environment.yml as the source of truth.
+# Pixi workspace for gromatrix: the single source of truth for environments.
 #   pixi run test        fast unit tests (default env, Python 3.12)
 #   pixi run test-all    full suite incl. the offline end-to-end regression, with coverage
 #   pixi run lint        ruff check + ruff format --check (tiny env, no science stack)
 #   pixi run -e md ...   adds GROMACS / AmberTools / Open Babel for full step-F runs
 [workspace]
 name = "gromatrix"
-version = "0.1.0"
+version = "1.0.0"
 description = "PDB -> GROMACS simulation matrix with a batch-locked forcefield"
 channels = ["conda-forge"]
 platforms = ["linux-64", "osx-64", "osx-arm64"]
@@ -38,9 +38,18 @@ ruff = ">=0.6"
 
 [feature.lint.tasks]
 lint = { depends-on = ["ruff-check", "ruff-format-check"], description = "ruff lint + format check" }
-ruff-check = "ruff check src tests"
-ruff-format-check = "ruff format --check src tests"
-fmt = { cmd = "ruff format src tests && ruff check --fix src tests", description = "auto-format and auto-fix" }
+ruff-check = "ruff check src tests scripts benchmarks"
+ruff-format-check = "ruff format --check src tests scripts benchmarks"
+fmt = { cmd = "ruff format src tests scripts benchmarks && ruff check --fix src tests scripts benchmarks", description = "auto-format and auto-fix" }
+
+# Skill packaging needs only Python + PyYAML (tiny env, used by CI and the release workflow).
+[feature.skills.dependencies]
+python = "3.12.*"
+pyyaml = ">=6"
+
+[feature.skills.tasks]
+package-skills = { cmd = "python scripts/package_skills.py", description = "validate + zip .claude/skills/* into dist/skills/" }
+check-skills = { cmd = "python scripts/package_skills.py --check", description = "validate skills only" }
 
 # Python versions: 3.12 is canonical (PRs); 3.10/3.13 are the compatibility edges
 # of `requires-python = ">=3.10"`, tested only on pushes to main/dev.
@@ -68,6 +77,7 @@ mdanalysis = "*"
 [environments]
 default = { features = ["py312", "test"], solve-group = "default" }
 lint = { features = ["lint"], no-default-feature = true }
+skills = { features = ["skills"], no-default-feature = true }
 py310 = { features = ["py310", "test"] }
 py313 = { features = ["py313", "test"] }
 md = { features = ["py312", "md", "test"], solve-group = "default" }

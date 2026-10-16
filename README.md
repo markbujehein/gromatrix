@@ -1,5 +1,12 @@
 # gromatrix
 
+[![CI](https://github.com/markbujehein/gromatrix/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/markbujehein/gromatrix/actions/workflows/ci.yml)
+[![coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/markbujehein/gromatrix/badges/coverage.json)](https://github.com/markbujehein/gromatrix/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/markbujehein/gromatrix?sort=semver)](https://github.com/markbujehein/gromatrix/releases/latest)
+[![python](https://img.shields.io/badge/python-3.10%20%7C%203.12%20%7C%203.13-blue)](pixi.toml)
+[![pixi](https://img.shields.io/badge/env-pixi-yellow)](https://pixi.sh)
+[![ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+
 **gromatrix** is a general-purpose, target-agnostic pipeline that turns experimental or docked
 structures into a GROMACS simulation **matrix**: every receptor alone, every target alone, and every
 receptor + target complex. Targets can be small molecules, cofactors or other proteins. It works
@@ -9,6 +16,72 @@ and enforced at every step, so all systems in a comparison are built with identi
 
 Nothing in the algorithms refers to a particular protein, chain, ligand or residue number. Every
 decision is driven by the deposition metadata, geometry and the user's declared targets.
+
+It ships with a **Claude agent toolkit**: four skills that let Claude drive the whole pipeline.
+They install into any Claude client **without cloning this repository** (see below).
+
+## Install the Claude skills (no clone needed)
+
+Every [GitHub Release](https://github.com/markbujehein/gromatrix/releases/latest) carries one
+ready-to-upload `.zip` per skill, plus `SHA256SUMS`:
+
+| Download | Role |
+|---|---|
+| [`gromatrix.zip`](https://github.com/markbujehein/gromatrix/releases/latest/download/gromatrix.zip) | Orchestrator: decides the forcefield and targets, chains the stages, writes the final report. **Install this one first.** |
+| [`gromatrix-structure-prep.zip`](https://github.com/markbujehein/gromatrix/releases/latest/download/gromatrix-structure-prep.zip) | Steps A–C: fetch, clean, sub-unit extraction |
+| [`gromatrix-validate.zip`](https://github.com/markbujehein/gromatrix/releases/latest/download/gromatrix-validate.zip) | Steps D–E: OpenMM integrity relaxation, AlphaFold comparison |
+| [`gromatrix-gmx-builder.zip`](https://github.com/markbujehein/gromatrix/releases/latest/download/gromatrix-gmx-builder.zip) | Step F: GROMACS topologies, boxes, ions, smoke test |
+
+Install all four. The orchestrator hands off to the others by name.
+
+**claude.ai (web, desktop, Pro / Team / Enterprise).** Go to *Customize → Skills → Upload a
+skill* and upload each `.zip` as downloaded. Don't unzip them; each archive already contains
+the `<skill-name>/SKILL.md` folder layout that claude.ai expects.
+
+**Claude Code (CLI).** Unzip into your personal skills directory, which makes them available in
+every project:
+
+```bash
+cd ~/.claude/skills   # create it first if needed: mkdir -p ~/.claude/skills
+for s in gromatrix gromatrix-structure-prep gromatrix-validate gromatrix-gmx-builder; do
+  curl -fsSLO "https://github.com/markbujehein/gromatrix/releases/latest/download/$s.zip"
+  unzip -oq "$s.zip" && rm "$s.zip"
+done
+```
+
+Optionally verify a download against the release's `SHA256SUMS` with `sha256sum -c SHA256SUMS`.
+The archives are built reproducibly.
+
+**The skills drive the `gromatrix` command-line tools, so install the package where the commands
+will run.** That needs no clone either:
+
+```bash
+conda create -n gromatrix -c conda-forge python=3.12 openmm pdbfixer rdkit biopython scipy pyyaml
+conda activate gromatrix
+pip install "gromatrix @ git+https://github.com/markbujehein/gromatrix@v1.0.0"
+gmxprep-status --batch-dir test_batch   # prints {"ok": false, ...}: the commands are installed
+```
+
+What runs where:
+* **Steps A–E** need network access to RCSB / PDBe / AlphaFold DB.
+* **Step F** additionally needs GROMACS, acpype or CGenFF (conda-forge: `gromacs acpype openbabel`).
+
+In practice, Claude Code on your workstation or cluster runs the whole pipeline. On claude.ai the
+skills still guide planning, manifests and interpretation of results, and run commands wherever
+code execution can install the package.
+
+### Why four skills instead of one
+
+A single large prompt for six pipeline stages wastes context and blurs responsibilities. The
+toolkit follows **progressive disclosure**:
+* **Small entry point.** The orchestrator is a ~80-line entry point that makes the decisions that
+  are hard to undo and routes to a stage.
+* **Narrow stage skills.** Each stage skill documents only its own commands. Detailed flags and
+  troubleshooting live in its `references/` and are read only when needed.
+* **Stateless hand-off.** The skills hand off through the batch directory, not through
+  conversation memory. Every stage starts with `gmxprep-status`, which reports progress and names
+  the `next` skill and command. A fresh session, or a different agent, resumes any batch at the
+  right stage.
 
 ## Problems it solves, for any structure
 
@@ -42,29 +115,25 @@ failure. Verbose tool output goes to log files. `gmxprep-status --batch-dir B` s
 and names the next step. Full flags for each step are in the `references/cli.md` of the matching
 agent skill (below).
 
-## Agent skills (Claude Code)
+## Agent skill reference
 
-The repository ships a **suite of four Claude Code skills** in `.claude/skills/`, not one
-monolithic skill. Claude Code discovers them automatically when you work in this repository. Each
-stage skill documents only its own commands, so an agent loads only the instructions for the stage
-it is on:
+Inside a clone, Claude Code discovers the skills in `.claude/skills/` automatically. Outside one,
+install the release zips (above).
 
 | Skill | Scope | Commands it documents |
 |---|---|---|
-| `gromatrix` | Orchestrator: settles the forcefield, targets and protonation with the user; chains the stages; writes the final report | `gmxprep-status`, `gmxprep-gmx lock` |
+| `gromatrix` | Orchestrator: settles forcefield, targets and protonation with the user; chains the stages; final report | `gmxprep-status`, `gmxprep-gmx lock` |
 | `gromatrix-structure-prep` | Steps A–C: fetch, fix, sub-unit extraction, altlocs | `gmxprep-fetch`, `gmxprep-fix`, `gmxprep-extract` |
 | `gromatrix-validate` | Steps D–E: OpenMM integrity relaxation, AlphaFold comparison | `gmxprep-relax`, `gmxprep-afcompare` |
 | `gromatrix-gmx-builder` | Step F: manifest, GROMACS build, verify, smoke test | `gmxprep-gmx` |
 
-**Hand-off between skills.** All state lives in the batch directory; nothing has to survive in the
-agent's conversation memory:
-* every skill starts with `gmxprep-status`;
-* that command reads only the artefacts the steps write (lock, `fixed/*.meta.json`,
-  `units/*/unit.json`, `relaxed/*/relax.json`, `af/*.json`, `systems/*/system.json`);
-* it returns `next: {skill, command, why}`.
+`gmxprep-status` reads only the artefacts the steps write:
+* the forcefield lock;
+* `fixed/*.meta.json` and `units/*/unit.json`;
+* `relaxed/*/relax.json` and `af/*.json`;
+* `systems/*/system.json`.
 
-So a fresh session, or a different agent, can resume any batch at the right stage. Each skill keeps
-its detailed flags and troubleshooting in its own `references/`, which are read only when needed.
+That keeps the hand-off between skills deterministic.
 
 ## Validation
 
@@ -83,9 +152,10 @@ The algorithms are general; these datasets are used to **stress-test** them:
 
 ```
 gromatrix/
-├── pyproject.toml / environment.yml
+├── pyproject.toml / pixi.toml / pixi.lock
 ├── examples/manifest.yaml            # matrix definition consumed by step F
 ├── benchmarks/                       # validation reports on real structure panels
+├── scripts/package_skills.py         # validates + zips each skill for upload (used by the release workflow)
 ├── src/gmxprep/
 │   ├── net.py           # stdlib HTTP with retries + sha256 download cache
 │   ├── fetch.py         # [A] RCSB fetch: IDs, full-text or UniProt search
@@ -124,7 +194,7 @@ gromatrix/
 ## Quick start
 
 ```bash
-conda env create -f environment.yml && conda activate gmxprep
+pixi shell -e md          # from a clone; or the conda + pip install shown above
 B=runs/my_study
 gmxprep-gmx lock     --batch-dir $B --forcefield amber
 gmxprep-fetch        --batch-dir $B --ids <PDB IDs>            # or --uniprot <ACC> --method xray
@@ -159,6 +229,18 @@ tasks:
 * Environments are cached from the lockfile, so jobs install in seconds. After changing
   dependencies, run `pixi lock` and commit `pixi.lock`; CI uses `--locked` and fails if the lock
   is stale.
+* The `skills` job validates and zips every agent skill on each push and pull request, so a broken
+  skill (e.g. invalid YAML frontmatter) fails CI instead of failing on upload.
+
+**Releasing.** Set the version in `pyproject.toml` / `pixi.toml` / `src/gmxprep/__init__.py`, merge
+to `main`, then tag:
+
+```bash
+pixi run -e skills package-skills          # optional local check: dist/skills/*.zip + SHA256SUMS
+git tag v1.0.0 && git push origin v1.0.0   # .github/workflows/release.yml publishes the zips
+```
+
+The release workflow refuses a tag that doesn't match the package version.
 
 ## Design notes
 
