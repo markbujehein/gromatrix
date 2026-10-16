@@ -7,3 +7,4 @@ coverage.xml
 .coverage
 .pixi/
 .ruff_cache/
+.claude/worktrees/
