@@ -55,5 +55,7 @@ consent, because it breaks the matrix.
 
 ## Hand-off
 
-Done when `verify` is `"ok": true`, and `smoke` passed if it was run. Return to the orchestrator
-for the final report. Each system's next command is `B/systems/<id>/run.sh` (em → nvt → npt → md).
+Done when `verify` is `"ok": true`, and `smoke` passed if it was run. Return to the orchestrator;
+`gmxprep-status` then names `gromatrix-execution` (MD runs) as `next`. Each system also has a
+dependency-free `run.sh` (em → nvt → npt → md), for users who run without gromatrix installed.
+`system.json` records `target_resname` / `target_residues` for step H.

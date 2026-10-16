@@ -1,8 +1,39 @@
 # Changelog
 
-## v1.0.0
+## v0.2.0 (alpha, unreleased)
 
-First public release.
+### Added
+- **G `gmxprep-run`**: runs EM → NVT → NPT → production for every built system.
+  - Per-phase resume from checkpoints (`mdrun -cpi`).
+  - Gates: EM convergence, plus zero LINCS warnings in NVT/NPT.
+  - Live JSON progress.
+  - Runs in the foreground, with `--background`, or as a Slurm array (`--slurm`, with `-maxh`
+    derived from the walltime and SIGTERM checkpointing).
+- **H `gmxprep-analyze`**: two-pass `trjconv` PBC removal and fit.
+  - Metrics: Cα RMSD, target RMSD in the protein frame, RMSF, Rg, and target–enzyme H-bond
+    occupancy.
+  - Flags: `ligand_drift`, `protein_unstable`, `no_target_hbonds`.
+  - Plots and `analysis_summary.csv` across the matrix.
+- **`gmxprep-pipeline`**: steps A–H from one manifest (`examples/pipeline.yaml`).
+  - Options: `--dry-run`, `--skip-relax` / `--skip-afdb` / `--skip-smoke`, `--from` / `--to`,
+    and fail-fast with `--keep-going`.
+  - Without `enzymes:`, the step-F manifest is generated from the step-C units.
+- `gmxprep-status` reports `steps` A–H and routes to the new skills. A batch built from the
+  user's own PDBs no longer points back to `gmxprep-fetch`.
+- Skills `gromatrix-execution` (G) and `gromatrix-analysis` (H). The orchestrator now covers
+  end-to-end steering and one-command mode. A test enforces that stage skills only run their own
+  commands.
+- Step F records `target_resname`, `target_residues` and `protein_residues` in `system.json`.
+- pixi `analysis` feature (MDAnalysis, matplotlib) in the test and md environments; pyproject
+  extra `analysis`.
+
+### Changed
+- The import package is now `gromatrix`, as the distribution always was; it was `gmxprep`. The
+  `gmxprep-*` command names are unchanged.
+
+## v0.1.0 (alpha, never tagged)
+
+First alpha: steps A–F, status and the agent toolkit.
 
 ### Pipeline (`gmxprep-*` commands)
 - **A `gmxprep-fetch`**: RCSB download by ID, full-text or UniProt search. Downloads are cached and

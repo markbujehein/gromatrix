@@ -1,6 +1,6 @@
 name: Release
 
-# Push a version tag on main (git tag v1.0.0 && git push origin v1.0.0) to publish a release
+# Push a version tag on main (git tag v0.2.0 && git push origin v0.2.0) to publish a release
 # with one installable .zip per agent skill plus SHA256SUMS.
 on:
   push:

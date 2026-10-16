@@ -1,6 +1,7 @@
 """scripts/package_skills.py: validation rules and reproducible archives."""
 
 import importlib.util
+import re
 import zipfile
 from pathlib import Path
 
@@ -20,7 +21,27 @@ def _skill(tmp_path, name, frontmatter):
 
 def test_repository_skills_are_valid():
     skills = [p for p in (ROOT / ".claude" / "skills").iterdir() if (p / "SKILL.md").is_file()]
-    assert len(skills) == 4 and all(ps.validate(s) == [] for s in skills)
+    assert len(skills) == 6 and all(ps.validate(s) == [] for s in skills)
+
+
+# The commands each stage skill may tell the agent to run (plus gmxprep-status, the hand-off).
+STAGE_COMMANDS = {
+    "gromatrix-structure-prep": {"gmxprep-fetch", "gmxprep-fix", "gmxprep-extract"},
+    "gromatrix-validate": {"gmxprep-relax", "gmxprep-afcompare"},
+    "gromatrix-gmx-builder": {"gmxprep-gmx"},
+    "gromatrix-execution": {"gmxprep-run"},
+    "gromatrix-analysis": {"gmxprep-analyze"},
+}
+
+
+def test_stage_skills_only_run_their_own_commands():
+    """Progressive disclosure: a stage skill's code blocks never run another stage's commands."""
+    for skill, own in STAGE_COMMANDS.items():
+        d = ROOT / ".claude" / "skills" / skill
+        for md in [d / "SKILL.md", *sorted((d / "references").glob("*.md"))]:
+            blocks = re.findall(r"```.*?```", md.read_text(), re.S)
+            used = set(re.findall(r"\bgmxprep-[a-z]+", "\n".join(blocks)))
+            assert used <= own | {"gmxprep-status"}, f"{md.relative_to(ROOT)} runs {used - own}"
 
 
 def test_validation_catches_common_mistakes(tmp_path):

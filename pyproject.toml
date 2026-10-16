@@ -4,15 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gromatrix"
-version = "1.0.0"
+version = "0.2.0"
 description = "PDB -> GROMACS enzyme x target simulation matrix with a batch-locked forcefield"
 requires-python = ">=3.10"
+classifiers = ["Development Status :: 3 - Alpha"]
 dependencies = ["pyyaml>=6", "numpy>=1.24", "scipy>=1.10", "biopython>=1.80"]
 # openmm + pdbfixer are needed for steps B and D; tmtools is optional (cross-check only)
 
 [project.optional-dependencies]
 # rdkit/openmm/pdbfixer/acpype/openbabel/gromacs come from conda-forge (pixi.toml, or see README install)
 test = ["pytest>=7"]
+analysis = ["MDAnalysis>=2.7", "matplotlib>=3.8"]  # step H
 
 [project.scripts]
 gmxprep-gmx = "gromatrix.gmx_prep:main"
@@ -22,6 +24,9 @@ gmxprep-fix = "gromatrix.fix:main"
 gmxprep-extract = "gromatrix.extract:main"
 gmxprep-relax = "gromatrix.relax:main"
 gmxprep-afcompare = "gromatrix.afdb:main"
+gmxprep-run = "gromatrix.run:main"
+gmxprep-analyze = "gromatrix.analyze:main"
+gmxprep-pipeline = "gromatrix.pipeline:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
