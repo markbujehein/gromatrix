@@ -1,5 +1,5 @@
 ---
-name: gromacs-matrix-prep
+name: gromatrix
 description: Prepare PDB structures of enzymes and docked targets (ligands or proteins) for GROMACS molecular dynamics as a full simulation matrix (enzyme alone, target alone, enzyme+target complex for every pair) with one forcefield locked per batch. Fetches from RCSB, fixes structures with PDBFixer, extracts subunits with their cofactors, relaxes with OpenMM, compares with AlphaFold (RMSD, TM-score, lDDT), then builds topologies, boxes, solvent and ions using AMBER (GAFF2/acpype) or CHARMM36m (CGenFF). Use this whenever the user wants to set up MD/GROMACS runs from PDB IDs or docked poses, parameterise a ligand or cofactor for GROMACS, compare enzyme-substrate systems, check forcefield consistency across simulations, or asks about pdb2gmx/acpype/CGenFF topology problems in this repository, even if they don't say "matrix".
 ---
 

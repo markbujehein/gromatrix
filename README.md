@@ -1,4 +1,4 @@
-# gromacs-matrix-prep
+# gromatrix
 
 Takes PDB files of enzymes docked with targets and turns them into a GROMACS simulation **matrix**
 (each enzyme alone, each target alone, and every enzyme + target complex). One forcefield is locked
@@ -7,7 +7,7 @@ per batch and checked at every step.
 ## Repository layout
 
 ```
-gromacs-matrix-prep/
+gromatrix/
 ├── pyproject.toml / environment.yml
 ├── examples/manifest.yaml            # matrix definition consumed by [F]
 ├── src/gmxprep/
@@ -27,7 +27,7 @@ gromacs-matrix-prep/
 │   ├── relax.py         # [D] planned
 │   └── afcompare.py     # [E] planned
 ├── tests/test_core.py, test_extract.py, data/1XVP.cif.gz (benchmark)
-└── .claude/skills/gromacs-matrix-prep/
+└── .claude/skills/gromatrix/
     ├── SKILL.md                      # operational router (what to run, in what order)
     └── references/                   # loaded only when needed
         ├── cli.md  forcefields.md  troubleshooting.md
