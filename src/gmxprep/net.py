@@ -14,7 +14,7 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-USER_AGENT = "gromatrix/0.1 (+https://github.com/markbujehein/gromatrix)"
+USER_AGENT = "gromatrix/1.0 (+https://github.com/markbujehein/gromatrix)"
 RETRY_STATUS = {429, 500, 502, 503, 504}
 MAX_WAIT = 120.0  # s; never let a server's Retry-After stall a batch for long
 

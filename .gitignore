@@ -8,3 +8,4 @@ coverage.xml
 .pixi/
 .ruff_cache/
 .claude/worktrees/
+dist/
