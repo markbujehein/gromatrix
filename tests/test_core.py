@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from gromatrix import topology as topo
@@ -162,3 +164,23 @@ def test_pose_maps_onto_template_order(tmp_path):
     for i, a in enumerate(mol.GetAtoms()):
         if a.GetAtomicNum() > 1:
             assert all(abs(c - t / 10) < 2e-3 for c, t in zip(xyz[i], tmpl.GetAtomPosition(i)))
+
+
+def test_build_refuses_to_delete_md_results(tmp_path):
+    """A changed input rebuilds a system from scratch; with MD results that needs --force."""
+    import argparse
+
+    from gromatrix import gmx_prep
+
+    pdb = tmp_path / "e.pdb"
+    pdb.write_text("ATOM\n")
+    wd = tmp_path / "B" / "systems" / "E1"
+    wd.mkdir(parents=True)
+    (wd / "system.json").write_text(json.dumps({"status": "ok", "inputs_sha": "old"}))
+    (wd / "run.json").write_text(json.dumps({"status": "done"}))
+    (wd / "md.xtc").write_text("weeks of sampling")
+    args = argparse.Namespace(box="dodecahedron", pad=1.2, conc=0.15, temp=300.0, md_ns=100.0, force=False)
+    ctx = gmx_prep.Ctx(tmp_path / "B", resolve("amber"), tmp_path, "gmx", args, {})
+    with pytest.raises(ValueError, match="has MD results"):
+        gmx_prep.build_system(gmx_prep.SystemDef("E1", "enzyme", pdb), ctx)
+    assert (wd / "md.xtc").exists()

@@ -15,7 +15,8 @@
 ## RMSF
 
 The x axis is the sequential residue index of the simulated protein (all chains, in pdb2gmx order),
-not the author numbering. `analysis.json` `rmsf.resid` holds the residue numbers. Termini and
+not the author numbering. `analysis.json` `rmsf.label` holds the author chain and residue
+(`A:100A`) for each point. Termini and
 rebuilt loops (step B, `--max-loop`) are usually the peaks.
 
 ## H-bonds

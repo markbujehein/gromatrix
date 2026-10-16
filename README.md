@@ -310,7 +310,8 @@ The release workflow refuses a tag that doesn't match the package version.
   8. writes a named `index.ndx`, a **zero-warning `grompp`** of `em.tpr`, and `run.sh`.
 * **Patterns adopted from SQUIP** (ESS-MimerAI/SQUIP), each in a stricter form:
   * test-mode short runs became `smoke`;
-  * log scanning (LINCS, fatal errors, "Finished mdrun") became `checks.scan_md_log`;
+  * log scanning (LINCS, fatal errors, "Finished mdrun") became `checks.scan_md_log`, which is
+    aware of log segments and shared by smoke and step G;
   * `[ molecules ]` vs `.gro` checks became a full atom walk with charge gates;
   * absolute includes became a relative forcefield symlink;
   * TaskBlaster caching became an input-hash resume;
@@ -325,9 +326,15 @@ The release workflow refuses a tag that doesn't match the package version.
   * **Interrupts.** `SIGTERM` is forwarded to mdrun, so it writes a checkpoint. The Slurm array
     script sets `--signal=B:TERM@300` and `-maxh` just under the walltime, so resubmitting
     continues every system.
-  * **Gates.** A failed gate renames the phase's `.gro`, so the phase is never resumed as
-    complete.
-  * **Ownership.** `run.json` records the host and pid, so two runners never work on one system.
+  * **Ownership.** `run.json` records the host and pid. A second runner skips a system that a live
+    runner owns. This is a check, not a lock. A runner that died on this host is reported as
+    `interrupted`.
+  * **Time budget.** `--maxh` covers the whole invocation, and each `mdrun` gets what is left.
+  * **Gates.** Gates also run on phases skipped as done, so an EM left by the smoke test is checked
+    too. NVT/NPT LINCS warnings are counted over every log segment. A phase that fails its gate
+    keeps `<phase>.failed.gro/.log` as evidence and is cleared, checkpoint included, so it is never
+    resumed as complete.
+  * **Safety.** Step F refuses to rebuild a system that has MD results unless `--force`.
 * **Step H.**
   * **PBC.** A two-pass `trjconv`: `-pbc mol -center`, then `-fit rot+trans`, writing the solute
     only. `Solute` is a prefix of every system, so the step-F index groups stay valid for the
@@ -338,6 +345,6 @@ The release workflow refuses a tag that doesn't match the package version.
     target.
   * **H-bonds.** Geometric (3.0 Å / 150°), with donors paired to hydrogens by distance; each
     donor–acceptor pair gets an occupancy.
-* **Pipeline.** Each step runs in-process through its own CLI `main()`, so the pipeline adds no
-  logic of its own: the same locks, caches and gates apply. Every `steps.<name>` key in the
-  manifest becomes that command's flag.
+* **Pipeline.** Each step runs in-process through its own CLI `main()`, so the same locks, caches
+  and gates apply. The pipeline's own logic is planning and generating the step-F manifest from
+  the step-C units. Every `steps.<name>` key in the manifest becomes that command's flag.

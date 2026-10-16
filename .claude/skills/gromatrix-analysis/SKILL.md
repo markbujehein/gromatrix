@@ -25,8 +25,10 @@ gmxprep-analyze --batch-dir B                    # every finished system
 gmxprep-analyze --batch-dir B --stride 5 --begin 10000   # every 5th frame, skip the first 10 ns
 ```
 
-Pass the same `--deffnm` as `gmxprep-run` if the user changed it. A system with a current
-`analysis.json` (newer than its trajectory) is not recomputed unless `--force`.
+Pass the same `--deffnm` as `gmxprep-run` if the user changed it. A system whose `analysis.json` is
+newer than its trajectory and was made with the same settings is not recomputed (`--force`
+overrides). `analysis_summary.csv` is always rebuilt from every system's results, so `--only` never
+drops rows.
 
 ## What it does
 

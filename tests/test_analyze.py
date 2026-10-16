@@ -10,7 +10,7 @@ import pytest
 
 mda = pytest.importorskip("MDAnalysis")
 
-from gromatrix import analyze  # noqa: E402
+from gromatrix import analyze, checks  # noqa: E402
 
 NRES, NFRAMES = 6, 10
 NAMES = ["N", "H", "CA", "C", "O"]
@@ -101,13 +101,14 @@ def test_cli_end_to_end_with_prepared_trajectory(tmp_path, traj, monkeypatch, ca
     wd.mkdir(parents=True)
     (wd / "system.json").write_text(
         json.dumps({"id": "E1__LIG", "role": "complex", "enzyme": "E1", "target": "LIG", "status": "ok",
-                    "target_resname": "LIG", "target_residues": []})
+                    "target_resname": "LIG", "target_residues": [],
+                    "protein_residue_labels": [f"A:{100 + i}" for i in range(NRES - 1)] + ["A:104A"]})
     )  # fmt: skip
     (wd / "run.json").write_text(json.dumps({"status": "done"}))
     (wd / "md.xtc").write_text("x")
     (wd / "solv_ions.gro").write_text(gro.read_text())
     sol = list(range(1, n_prot + 4))
-    analyze.write_index(
+    checks.write_ndx(
         {"System": sol + [n_prot + 4], "Protein": sol[:n_prot], "LIG_LIG": sol[n_prot:], "Solute": sol,
          "Solvent": [n_prot + 4]},
         wd / "index.ndx",
@@ -116,7 +117,7 @@ def test_cli_end_to_end_with_prepared_trajectory(tmp_path, traj, monkeypatch, ca
     assert "System" not in groups and groups["C-alpha"] == [3 + 5 * r for r in range(NRES)]
     assert len(groups["Backbone"]) == 3 * NRES
 
-    def fake_prepare(wd_, a, tres):
+    def fake_prepare(wd_, a, groups_, tres):
         (wd_ / "analysis").mkdir(exist_ok=True)
         return gro, xtc
 
@@ -127,12 +128,34 @@ def test_cli_end_to_end_with_prepared_trajectory(tmp_path, traj, monkeypatch, ca
     rep = json.loads((wd / "analysis" / "analysis.json").read_text())
     assert rep["selections"] == {"target": f"index {n_prot}:{n_prot + 2}", "enzyme": f"index 0:{n_prot - 1}"}
     assert set(rep["plots"]) == {"rmsd.png", "rmsf.png", "rg.png", "hbonds.png"}
+    assert rep["rmsf"]["label"][-1] == "A:104A"  # author labels, insertion code kept
     for p in rep["plots"]:
         assert (wd / "analysis" / p).read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
     (row,) = csv.DictReader(open(b / "analysis_summary.csv"))
     assert row["id"] == "E1__LIG" and row["top_hbond"] == "LIG7:O1->ALA3:O" and row["flags"] == "ligand_drift"
 
-    # Unfinished runs are skipped; an up-to-date analysis is not recomputed.
+    # An up-to-date analysis is reused; changed settings recompute it.
+    calls = []
+    monkeypatch.setattr(analyze, "prepare_trajectory", lambda *x: calls.append(1) or fake_prepare(*x))
+    assert analyze.main(["--batch-dir", str(b)]) == 0 and calls == []
+    assert analyze.main(["--batch-dir", str(b), "--ligand-rmsd-max", "8"]) == 0 and calls == [1]
+    capsys.readouterr()
+    assert not json.loads((wd / "analysis" / "analysis.json").read_text())["flags"]
+
+    # --only on another system keeps this system's row in the summary.
+    other = b / "systems" / "E1"
+    other.mkdir()
+    (other / "system.json").write_text(json.dumps({"id": "E1", "role": "enzyme", "status": "ok"}))
+    (other / "run.json").write_text(json.dumps({"status": "done"}))
+    (other / "md.xtc").write_text("x")
+    monkeypatch.setattr(analyze, "solute_groups", lambda wd_: {"Protein": [1]})
+    monkeypatch.setattr(analyze, "compute_metrics", lambda *x: (_ for _ in ()).throw(RuntimeError("numpy says no")))
+    assert analyze.main(["--batch-dir", str(b), "--only", "E1"]) == 1  # unexpected error: reported, not raised
+    out = json.loads(capsys.readouterr().out)
+    assert out["failed"][0]["reason"].startswith("RuntimeError") and out["summary_rows"] == 1
+    assert [r["id"] for r in csv.DictReader(open(b / "analysis_summary.csv"))] == ["E1__LIG"]
+
+    # Unfinished runs are skipped.
     (wd / "run.json").write_text(json.dumps({"status": "running"}))
-    assert analyze.main(["--batch-dir", str(b)]) == 1
+    assert analyze.main(["--batch-dir", str(b), "--only", "E1__LIG"]) == 1
     assert json.loads(capsys.readouterr().out)["skipped"][0]["id"] == "E1__LIG"

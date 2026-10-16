@@ -37,7 +37,7 @@ keeps its atom numbers in `solute.ndx`.
 | `role`, `enzyme`, `target`, `selections` | system identity and the MDAnalysis selections used |
 | `frames`, `time_ns` | frame count and times |
 | `ca_rmsd`, `target_rmsd`, `rg` | per-frame series, Å |
-| `rmsf` | `{resindex, resid, resname, rmsf}` per Cα |
+| `rmsf` | `{resindex, resid, resname, rmsf, label}` per Cα; `label` is the author residue (`A:100A`) from step F |
 | `hbonds` | `{count: per frame, pairs: [{donor, acceptor, occupancy, target_is_donor}], pairs_below_threshold}` |
 | `summary.<series>` | `{mean, std, max, final, last_half_mean}` |
 | `flags`, `plots`, `settings` | flags with numbers, png names, criteria used |
@@ -53,6 +53,9 @@ Which series exist depends on the system's role:
 
 ### Summary output
 
-`{"ok","analysed","skipped":[{id,reason}],"failed":[{id,reason}],"flags":{id:[…]},"summary_csv"}`.
+`{"ok","analysed","skipped":[{id,reason}],"failed":[{id,reason}],"flags":{id:[…]},"summary_csv","summary_rows"}`.
+`analysis_summary.csv` holds one row per system with a successful `analysis.json`, across the whole
+batch, not just this invocation. A stored analysis is reused only if its `settings` (deffnm, stride,
+begin, H-bond criteria, flag thresholds) match the current flags.
 `B/analysis_summary.csv` columns: `id, role, enzyme, target, status, frames, time_ns,
 ca_rmsd_last_half, target_rmsd_last_half, rg_mean, hbond_mean, top_hbond, top_hbond_occupancy, flags`.

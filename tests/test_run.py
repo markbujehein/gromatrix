@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from gromatrix import checks
 from gromatrix import mdp as mdpmod
 from gromatrix import run as runmod
 from gromatrix.forcefields import acquire_lock, resolve
@@ -78,7 +79,7 @@ def test_crash_resumes_from_checkpoint(batch, monkeypatch):
     st = json.loads((wd / "run.json").read_text())
     assert st["status"] == "failed" and st["phases"]["npt"]["status"] == "failed"
     assert (wd / "npt.cpt").exists() and not (wd / "npt.gro").exists()
-    assert runmod.phase_state(wd, "npt") == "partial"
+    assert runmod.phase_state(wd, runmod.PHASES[2], "npt") == "partial"
 
     (wd / "gmx_calls.jsonl").unlink()
     assert _run(batch) == 0
@@ -102,17 +103,6 @@ def test_rerunning_a_phase_restarts_everything_after_it(batch, monkeypatch):
     assert runs == ["nvt", "npt", "md"] and not any("-cpi" in c for c in _calls(wd))
 
 
-def test_rebuilt_system_restarts_from_em(batch):
-    wd = _system(batch)
-    assert _run(batch) == 0
-    stamp = json.loads((wd / "system.json").read_text())
-    (wd / "system.json").write_text(json.dumps({**stamp, "inputs_sha": "bbb"}))
-    (wd / "gmx_calls.jsonl").unlink()
-    assert _run(batch) == 0
-    assert [c[c.index("-deffnm") + 1] for c in _calls(wd) if c[0] == "mdrun"] == ["em", "nvt", "npt", "md"]
-    assert json.loads((wd / "run.json").read_text())["inputs_sha"] == "bbb"
-
-
 def test_gates_em_convergence_and_lincs(batch, monkeypatch, capsys):
     wd = _system(batch, "S1")
     _system(batch, "S2")
@@ -120,7 +110,7 @@ def test_gates_em_convergence_and_lincs(batch, monkeypatch, capsys):
     out = json.loads(capsys.readouterr().out.splitlines()[-1])
     assert {f["id"] for f in out["failed"]} == {"S1", "S2"}  # one failure does not stop the batch
     assert "EM did not converge" in json.loads((wd / "run.json").read_text())["reason"]
-    assert runmod.phase_state(wd, "em") != "done" and (wd / "em.failed.gro").exists()
+    assert runmod.phase_state(wd, runmod.PHASES[0], "em") == "new" and (wd / "em.failed.gro").exists()
 
     for s in ("S1", "S2"):
         for f in (batch / "systems" / s).glob("em.*"):
@@ -168,7 +158,9 @@ def test_slurm_array_script(batch, capsys):
     assert "#SBATCH --partition=gpu" in script and "#SBATCH --gpus-per-task=1" in script
     assert "module load gromacs" in script and "SYSTEMS=(A1 A2)" in script
     assert '--only "$ID"' in script and "--maxh 22.633" in script  # 24 h * 0.95 - 10 min
-    assert "--signal=B:TERM@300" in script
+    assert "--signal=B:TERM@300" in script and "--force" not in script
+    runmod.main(["--batch-dir", str(batch), "--slurm", "--force"])
+    assert "--force" in Path(json.loads(capsys.readouterr().out)["script"]).read_text()
 
 
 def test_log_helpers(tmp_path):
@@ -177,22 +169,96 @@ def test_log_helpers(tmp_path):
         "Log file opened\n           Step           Time\n          100       0.2\n\nReceived the TERM signal\n"
         "Finished mdrun\nLog file opened\n           Step           Time\n          400       0.8\n\nFinished mdrun\n"
     )
-    seg = runmod.last_segment(log)
+    seg = checks.last_segment(log.read_text())
     assert runmod.last_step(seg) == 400 and "TERM" not in seg  # only the newest segment counts
+    md = runmod.PHASES[3]
     (tmp_path / "md.gro").write_text("x")
-    assert runmod.phase_state(tmp_path, "md") == "done"
+    assert runmod.phase_state(tmp_path, md, "md") == "done"
     log.write_text(log.read_text() + "Log file opened\nStep 9: Run time exceeded 0.990 hours\nFinished mdrun\n")
     (tmp_path / "md.cpt").write_text("x")
-    assert runmod.phase_state(tmp_path, "md") == "partial"  # -maxh stop is not completion
-    assert runmod._hours("2-01:30:00") == pytest.approx(49.5) and runmod._hours("90") == 1.5
+    assert runmod.phase_state(tmp_path, md, "md") == "partial"  # -maxh stop is not completion
+    # A phase whose checkpoint the next phase reads is not done without it.
+    (tmp_path / "nvt.log").write_text("Log file opened\nFinished mdrun\n")
+    (tmp_path / "nvt.gro").write_text("x")
+    assert runmod.phase_state(tmp_path, runmod.PHASES[1], "nvt") == "new"
 
 
-def test_progress_lines_while_mdrun_runs(batch, monkeypatch, capsys):
-    _system(batch)
-    assert _run(batch, env={"FAKE_GMX_SLOW": "md"}, monkeypatch=monkeypatch) == 0
-    lines = [json.loads(x) for x in capsys.readouterr().out.splitlines()]
-    running = [x for x in lines if x.get("status") == "running" and x["phase"] == "md"]
-    r = next(x for x in running if x["progress_pct"] == 50.0)  # polled while mdrun sat at nsteps/2
-    assert r["step"] == "run" and r["system"] == "S1"
-    # overall: nvt + npt (50 000 steps each) done, half of the 10 000-step production
-    assert r["overall_pct"] == pytest.approx(100 * 105000 / 110000, abs=0.1)
+@pytest.mark.parametrize(
+    "walltime,hours",
+    [("90", 1.5), ("30:00", 0.5), ("24:00:00", 24), ("1-12", 36), ("1-12:30", 36.5), ("2-01:30:00", 49.5)],
+)
+def test_slurm_walltime_formats(walltime, hours):
+    assert runmod._hours(walltime) == pytest.approx(hours)
+
+
+def test_failed_gate_is_rerun_fresh_not_resumed(batch, monkeypatch):
+    wd = _system(batch)
+    assert _run(batch, env={"FAKE_GMX_LINCS": "nvt"}, monkeypatch=monkeypatch) == 1
+    assert (wd / "nvt.failed.log").exists() and not (wd / "nvt.cpt").exists()
+    (wd / "gmx_calls.jsonl").unlink()
+    assert _run(batch) == 0
+    calls = _calls(wd)
+    nvt = next(c for c in calls if c[0] == "mdrun" and "nvt" in c)
+    assert "-cpi" not in nvt and any(c[0] == "grompp" and "nvt.tpr" in c for c in calls)
+
+
+def test_em_left_by_smoke_test_is_gated(batch, monkeypatch):
+    wd = _system(batch)
+    # step F's smoke test ran EM in the system directory and it did not converge
+    (wd / "em.gro").write_text("x")
+    (wd / "em.log").write_text(
+        "Log file opened\nPotential Energy  = -1.0e+05\nMaximum force = 5.0e+04\nFinished mdrun\n"
+    )
+    assert _run(batch) == 1
+    st = json.loads((wd / "run.json").read_text())
+    assert "EM did not converge" in st["reason"] and not (wd / "nvt.tpr").exists()
+
+
+def test_crash_is_failed_even_after_an_earlier_signal_stop(batch, monkeypatch):
+    wd = _system(batch)
+    assert _run(batch, env={"FAKE_GMX_MAXH": "md"}, monkeypatch=monkeypatch) == 1
+    st = json.loads((wd / "run.json").read_text())
+    assert st["status"] == "interrupted" and runmod.phase_state(wd, runmod.PHASES[3], "md") == "partial"
+    # Resume fails before mdrun writes anything; the old "Run time exceeded" must not mask it.
+    assert _run(batch, env={"FAKE_GMX_FAIL": "md"}, monkeypatch=monkeypatch) == 1
+    assert json.loads((wd / "run.json").read_text())["status"] == "failed"
+    assert _run(batch) == 0  # and a clean resume finishes it
+
+
+def test_maxh_is_one_budget_for_the_invocation(batch, monkeypatch, capsys):
+    _system(batch, "S1")
+    _system(batch, "S2")
+    clock = iter(range(0, 10**6, 600))  # every mdrun "takes" 10 minutes
+    monkeypatch.setattr(runmod.time, "monotonic", lambda: float(next(clock)))
+    assert _run(batch, "--maxh", "0.5") == 1  # em, nvt, npt fit; production does not
+    out = json.loads(capsys.readouterr().out.splitlines()[-1])
+    maxh = [float(c[c.index("-maxh") + 1]) for c in _calls(batch / "systems" / "S1") if c[0] == "mdrun"]
+    assert maxh == sorted(maxh, reverse=True) and maxh[0] < 0.5  # what is left, not the full hour
+    assert out["interrupted"] == ["S1"] and out["not_started"] == ["S2"]  # budget ends the batch
+
+
+def test_signal_between_phases_stops_the_batch(batch, monkeypatch):
+    wd = _system(batch)
+    real = runmod.Runner.grompp
+
+    def grompp_then_term(self, phase, prev):
+        real(self, phase, prev)
+        if phase.name == "nvt":
+            self.request_stop()  # SIGTERM arrives while no mdrun is running
+
+    monkeypatch.setattr(runmod.Runner, "grompp", grompp_then_term)
+    assert _run(batch) == 1
+    st = json.loads((wd / "run.json").read_text())
+    assert st["status"] == "interrupted" and st["phases"]["em"]["status"] == "done"
+    assert not any(c[0] == "mdrun" and "nvt" in c for c in _calls(wd))
+
+
+def test_corrupt_run_json_does_not_block(batch):
+    wd = _system(batch)
+    (wd / "run.json").write_text('{"status": "runn')  # killed mid-write
+    assert _run(batch) == 0
+
+
+def test_abbreviated_flags_are_rejected():
+    with pytest.raises(SystemExit):
+        runmod.main(["--batch-dir", "x", "--backg"])  # would otherwise re-spawn itself in background

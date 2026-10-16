@@ -11,6 +11,7 @@ plus pipeline keys. Paths are relative to the manifest file.
     allow_incomplete: false         # passed to step F; see below
     steps:                          # each key becomes that command's --flag
       fetch:     {ids: [1ABC, 2DEF]}        # present = start from PDB IDs (A-E run)
+      fix:       {max_loop: 8}
       extract:   {targets: LIG}
       relax:     {}                         # false = skip (as --skip-relax)
       afcompare: {}                         # false = skip (as --skip-afdb)
@@ -26,9 +27,11 @@ from the user. Crystal structures only contain native pairs, so a generated
 matrix is usually incomplete: step F then stops unless `allow_incomplete: true`.
 
 Each step runs in-process through its own CLI entry point, so the forcefield
-lock, caches and gates are exactly those of the stage commands. After each step
-one line {"step": "pipeline", "stage", "command", "status", "result"} is
-printed; progress lines of step G pass through. The first step that reports
+lock, caches and gates are exactly those of the stage commands; the pipeline's
+own logic is limited to planning and generating the step-F manifest. After each
+step one line {"step": "pipeline", "stage", "command", "status", "result"} is
+printed. A step's result is its JSON line with an "ok" key; every other JSON line
+it prints (step G's progress) is passed straight through. The first step that reports
 "ok": false stops the pipeline (fail-fast) unless --keep-going. The plan and
 results are written to B/pipeline.json.
 """
@@ -47,6 +50,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
+
+from .run import emit
 
 LETTERS = "ABCDEFGH"
 GENERATED = "<B/manifest.generated.yaml>"
@@ -101,6 +106,18 @@ def _abs(entry: dict, root: Path) -> dict:
     return {k: (str((root / v).resolve()) if k in PATH_KEYS and isinstance(v, str) else v) for k, v in entry.items()}
 
 
+def _structure(b: Path, pid: str, fname: str, relax: dict, notes: list[str]) -> str | None:
+    """The file step F should use: the relaxed copy if it passed step D, the step-C file
+    if it was not relaxed, nothing if it failed relaxation."""
+    st = relax.get(fname, {}).get("status")
+    if st == "ok":
+        return str(b / "relaxed" / pid / fname)
+    if st == "failed":
+        notes.append(f"{pid}/{fname}: failed relaxation ({relax[fname].get('failure')}); left out")
+        return None
+    return str(b / "units" / pid / fname)
+
+
 def derive_manifest(raw: dict, root: Path, b: Path) -> tuple[Path, list[str]]:
     """Write B/manifest.generated.yaml from units/*/unit.json (+ relax.json)."""
     notes: list[str] = []
@@ -119,17 +136,11 @@ def derive_manifest(raw: dict, root: Path, b: Path) -> tuple[Path, list[str]]:
         relax = {}
         if (b / "relaxed" / pid / "relax.json").exists():
             relax = json.loads((b / "relaxed" / pid / "relax.json").read_text()).get("files", {})
-
-        def pick(fname: str, pid=pid, relax=relax) -> str | None:
-            st = relax.get(fname, {}).get("status")
-            if st == "ok":
-                return str(b / "relaxed" / pid / fname)
-            if st == "failed":
-                notes.append(f"{pid}/{fname}: failed relaxation ({relax[fname].get('failure')}); left out")
-                return None
-            return str(b / "units" / pid / fname)
-
         files = unit.get("files", {})
+
+        def pick(fname: str, pid=pid, relax=relax) -> str | None:  # bind this unit's values
+            return _structure(b, pid, fname, relax, notes)
+
         enz = pick(files["enzyme"]) if "enzyme" in files else None
         if enz is None:
             continue
@@ -200,12 +211,10 @@ def plan(raw: dict, root: Path, b: Path, a: argparse.Namespace) -> list[Step]:
     inc = ["--allow-incomplete"] if raw.get("allow_incomplete") else []
 
     out = []
-    if (b / "forcefield.lock.json").exists() and not ff:
-        pass  # an existing lock is used as is
-    elif not ff:
-        raise ValueError("no forcefield: set `forcefield:` in the manifest or pass --forcefield")
-    else:
+    if ff:  # creates the lock, or checks ff against an existing one
         out.append(Step("lock", "gmxprep-gmx", "gromatrix.gmx_prep", ["lock", *bd, "--forcefield", ff]))
+    elif not (b / "forcefield.lock.json").exists():
+        raise ValueError("no forcefield: set `forcefield:` in the manifest or pass --forcefield")
     no_struct = None if fetch_mode else "no steps.fetch: the manifest brings its own structures"
     out += [
         Step("A", "gmxprep-fetch", "gromatrix.fetch", [*bd, *cfg("fetch")], no_struct),
@@ -265,8 +274,18 @@ def plan(raw: dict, root: Path, b: Path, a: argparse.Namespace) -> list[Step]:
 
 
 # ------------------------------------------------------------------ execution
+def _result(line: str) -> dict | None:
+    """A step's result line: a JSON object with an "ok" key (the stage CLI contract)."""
+    try:
+        obj = json.loads(line)
+    except ValueError:
+        return None
+    return obj if isinstance(obj, dict) and "ok" in obj else None
+
+
 class _Tee(io.TextIOBase):
-    """Captures a step's stdout; progress lines (they carry "step") pass straight through."""
+    """Captures a step's stdout; every line that is not its result (step G's progress)
+    passes straight through."""
 
     def __init__(self, sink):
         self.sink, self.buf, self.lines = sink, "", []
@@ -276,7 +295,7 @@ class _Tee(io.TextIOBase):
         while "\n" in self.buf:
             line, self.buf = self.buf.split("\n", 1)
             self.lines.append(line)
-            if line.startswith("{") and '"step"' in line:
+            if line.strip() and _result(line) is None:
                 self.sink.write(line + "\n")
                 self.sink.flush()
         return len(s)
@@ -292,14 +311,10 @@ def call(step: Step) -> dict:
         return {"ok": False, "error": f"{step.command}: bad arguments {step.argv} (exit {e.code})"}
     tee.write("\n")
     for line in reversed(tee.lines):
-        if line.startswith("{") and '"step"' not in line:
-            try:
-                out = json.loads(line)
-                out.setdefault("ok", rc == 0)
-                return out
-            except ValueError:
-                continue
-    return {"ok": rc == 0, "error": None if rc == 0 else f"{step.command} printed no result line"}
+        out = _result(line)
+        if out is not None:
+            return out
+    return {"ok": False, "error": f"{step.command} printed no result line (exit {rc})"}
 
 
 def execute(steps: list[Step], raw: dict, root: Path, b: Path, a: argparse.Namespace) -> dict:
@@ -309,7 +324,7 @@ def execute(steps: list[Step], raw: dict, root: Path, b: Path, a: argparse.Names
         rec = {"step": "pipeline", "stage": s.stage, "command": s.shell()}
         if s.skip:
             s.result = {"status": "skipped", "reason": s.skip}
-            print(json.dumps({**rec, "status": "skipped", "reason": s.skip}), flush=True)
+            emit({**rec, "status": "skipped", "reason": s.skip})
             continue
         if failed and not a.keep_going:
             s.result = {"status": "not run", "reason": f"stopped after failure in {failed[0]}"}
@@ -320,7 +335,7 @@ def execute(steps: list[Step], raw: dict, root: Path, b: Path, a: argparse.Names
             except ValueError as e:
                 s.result = {"status": "failed", "ok": False, "error": str(e)}
                 failed.append(s.stage)
-                print(json.dumps({**rec, "status": "failed", "result": s.result}), flush=True)
+                emit({**rec, "status": "failed", "result": s.result})
                 continue
             notes += n
             s.argv = [str(path) if x == GENERATED else x for x in s.argv]
@@ -329,7 +344,7 @@ def execute(steps: list[Step], raw: dict, root: Path, b: Path, a: argparse.Names
         s.result = {"status": "ok" if out.get("ok") else "failed", **out}
         if not out.get("ok"):
             failed.append(s.stage)
-        print(json.dumps({**rec, "status": s.result["status"], "result": out}), flush=True)
+        emit({**rec, "status": s.result["status"], "result": out})
     report = {
         "ok": not failed,
         "batch": str(b),

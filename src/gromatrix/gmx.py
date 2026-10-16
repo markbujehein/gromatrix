@@ -15,12 +15,21 @@ class ToolError(RuntimeError):
     pass
 
 
-def run(cmd: list[str], cwd: Path, log: Path, stdin: str | None = None, env_extra: dict | None = None) -> str:
-    """Run `cmd`, appending full output to `log`. Raises ToolError with the log tail."""
+def gmx_cmd(gmx: str, *sub: str) -> list[str]:
+    """`gmx <sub ...>` without the banner and without #backup# files."""
+    return [gmx, "-quiet", "-nobackup", *sub]
+
+
+def tool_env(cmd: list[str], env_extra: dict | None = None) -> dict:
+    """Check that the program exists; return the environment to run it with."""
     if shutil.which(cmd[0]) is None and not Path(cmd[0]).exists():
         raise ToolError(f"'{cmd[0]}' not found on PATH")
-    env = os.environ.copy()
-    env.update(env_extra or {})
+    return {**os.environ, **(env_extra or {})}
+
+
+def run(cmd: list[str], cwd: Path, log: Path, stdin: str | None = None, env_extra: dict | None = None) -> str:
+    """Run `cmd`, appending full output to `log`. Raises ToolError with the log tail."""
+    env = tool_env(cmd, env_extra)
     proc = subprocess.run(cmd, cwd=cwd, input=stdin, capture_output=True, text=True, env=env)
     with open(log, "a") as fh:
         fh.write(f"\n$ {shlex.join(cmd)}\n{proc.stdout}{proc.stderr}")

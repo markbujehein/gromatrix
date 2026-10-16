@@ -32,7 +32,10 @@ def test_next_skill_follows_pipeline_state(tmp_path):
     st = batch_status(b)
     assert st["systems"]["smoke_ok"] == 1 and st["next"]["skill"] == "gromatrix-execution"  # G
     assert st["steps"] == dict(zip("ABCDEFGH", ["done"] * 6 + ["pending"] * 2))
-    _w(b / "systems" / "E1" / "run.json", {"status": "running"})
+    import os
+    import socket
+
+    _w(b / "systems" / "E1" / "run.json", {"status": "running", "host": socket.gethostname(), "pid": os.getpid()})
     assert "running" in batch_status(b)["next"]["why"]
     _w(b / "systems" / "E1" / "run.json", {"status": "failed"})
     assert batch_status(b)["next"]["command"].endswith("--only E1")
@@ -51,3 +54,21 @@ def test_own_pdbs_batch_skips_structure_steps(tmp_path):
     _w(tmp_path / "systems" / "X" / "system.json", {"status": "ok", "smoke": {"ok": True}})
     st = batch_status(tmp_path)
     assert st["steps"]["A"] == "n/a" and st["next"]["skill"] == "gromatrix-execution"
+
+
+def test_dead_runner_and_smoke_failures(tmp_path):
+    import os
+    import socket
+
+    _w(tmp_path / "forcefield.lock.json", {"key": "amber99sb-ildn"})
+    _w(tmp_path / "systems" / "A" / "system.json", {"status": "ok", "smoke": {"ok": True}})
+    _w(tmp_path / "systems" / "B" / "system.json", {"status": "ok", "smoke": {"ok": False}})
+    _w(tmp_path / "systems" / "A" / "run.json", {"status": "done"})
+    st = batch_status(tmp_path)
+    assert st["steps"]["G"] == "done"  # B is never run by G: its smoke test failed
+    # A runner killed with -9 leaves 'running' behind; status must not wait for it forever.
+    _w(tmp_path / "systems" / "A" / "run.json", {"status": "running", "host": socket.gethostname(), "pid": 2**22 + 7})
+    st = batch_status(tmp_path)
+    assert st["systems"]["run"] == {"interrupted": ["A"]} and st["next"]["command"].startswith("gmxprep-run")
+    _w(tmp_path / "systems" / "A" / "run.json", {"status": "running", "host": socket.gethostname(), "pid": os.getpid()})
+    assert "running" in batch_status(tmp_path)["next"]["why"]
