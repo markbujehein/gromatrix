@@ -3,9 +3,13 @@ name: Claude review
 # Automated review of pull requests (anthropics/claude-code-action, "Automatic PR Code Review" in its
 # docs/solutions.md). Needs the ANTHROPIC_API_KEY repository secret and the Claude GitHub app.
 
+# DISABLED for now: no ANTHROPIC_API_KEY secret is configured, so the automatic triggers are off and
+# the workflow can only be started by hand (Actions tab > Run workflow). To re-enable: add the secret,
+# install the Claude GitHub app (`/install-github-app`), and restore the `on:` block from git history
+# (`git log -p -- .github/workflows/claude-review.yml`).
+
 on:
-  pull_request:
-    types: [opened, synchronize, ready_for_review, reopened]
+  workflow_dispatch:
 
 permissions:
   contents: read
