@@ -20,9 +20,9 @@ import argparse
 import json
 import re
 import sys
-import tomllib
 from pathlib import Path
 
+import tomllib
 import yaml
 
 SKILL_KEYS = {"name", "description", "license", "allowed-tools", "metadata", "compatibility"}
@@ -146,7 +146,13 @@ def main(argv: list[str] | None = None) -> int:
                 errors.append(f"{md.relative_to(root)}: ${{CLAUDE_PLUGIN_ROOT}}/{ref} does not exist")
     if not skills:
         errors.append(f"no skills found in {root / 'skills'}")
-    print(json.dumps({"ok": not errors, "skills": [s.name for s in skills], "agents": [g.stem for g in agents], "errors": errors}))
+    result = {
+        "ok": not errors,
+        "skills": [s.name for s in skills],
+        "agents": [g.stem for g in agents],
+        "errors": errors,
+    }
+    print(json.dumps(result))
     return 1 if errors else 0
 
 

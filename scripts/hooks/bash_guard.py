@@ -34,7 +34,7 @@ def _rm(toks: list[str]) -> str | None:
     if recursive:
         for p in (t for t in toks[1:] if not t.startswith("-")):
             if LAYOUT_DIR.search(p.replace("\\", "/")):
-                return f"rm -r on {p}: batch folders hold the pipeline state. Ask the user, or rerun the step with --force."
+                return f"rm -r on {p}: batch folders hold pipeline state. Ask the user, or rerun the step with --force."
     return None
 
 

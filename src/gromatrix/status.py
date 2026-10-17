@@ -145,7 +145,8 @@ def _next(b: Path, lock: dict | None, per_id: dict, systems: dict, compute: dict
             "why": "no forcefield lock yet; decide it before anything family-dependent (D, F)",
         }
     if not per_id and not systems["built"]:
-        return {"skill": STRUCTURE_SKILL, "command": f"gromatrix-fetch --batch-dir {b} --ids <IDs>", "why": "empty batch"}
+        command = f"gromatrix-fetch --batch-dir {b} --ids <IDs>"
+        return {"skill": STRUCTURE_SKILL, "command": command, "why": "empty batch"}
     todo = lambda key: sorted(k for k, v in per_id.items() if not v.get(key))  # noqa: E731
     if systems["built"]:
         return _next_md(b, systems, compute)
@@ -186,9 +187,11 @@ def _next_md(b: Path, systems: dict, compute: dict | None = None) -> dict:
     """F (smoke) -> G -> H, once systems exist. G and H name the subagent that must run them."""
     runs = systems["run"]
     if systems["smoke_ok"] + systems["smoke_failed"] < systems["built"] and not systems["run_done"]:
-        return {"skill": GMX_SKILL, "command": f"gromatrix-gmx smoke --batch-dir {b}", "why": "systems not smoke-tested"}
+        command = f"gromatrix-gmx smoke --batch-dir {b}"
+        return {"skill": GMX_SKILL, "command": command, "why": "systems not smoke-tested"}
     if systems["smoke_failed"] and systems["smoke_failed"] == systems["built"]:
-        return {"skill": GMX_SKILL, "command": f"gromatrix-gmx verify --batch-dir {b}", "why": "every smoke test failed"}
+        command = f"gromatrix-gmx verify --batch-dir {b}"
+        return {"skill": GMX_SKILL, "command": command, "why": "every smoke test failed"}
     if runs.get("failed"):
         return {
             "skill": RUN_SKILL,
