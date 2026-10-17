@@ -53,3 +53,5 @@ step H), `build.log`, `error.txt` (on failure).
 Ligand cache `B/params/<RES>/`: `template.sdf` (atom order is the order used in the topology),
 `template.mol2`, `<RES>.itp`, `params.json`, `meta.json`, `param.log`.
 
+
+Every result line also carries `code`, `next_action` and, for build and run, `applied`: see `references/result-envelope.md`.

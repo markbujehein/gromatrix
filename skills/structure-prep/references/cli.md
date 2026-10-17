@@ -75,3 +75,5 @@ Outputs in `03-units/<ID>/`: `unit.pdb`, `enzyme.pdb` (polymer + cofactors, no t
 instances in the unit), `target_<chains>.pdb`/`complex_<chains>.pdb` for protein targets, and
 `unit.json` (every candidate's metrics, every ligand assignment, warnings).
 
+
+Every result line also carries `code`, `next_action` and, for build and run, `applied`: see `references/result-envelope.md`.

@@ -3,6 +3,10 @@
 ## v0.2.0 (alpha, unreleased)
 
 ### Added
+- **Result envelope.** Every command's result line keeps `ok`/`error` and gains, on failure, a stable
+  `code` and a `next_action` (`gromatrix.result.CODES`); leading keys are in a fixed order; build and run add an
+  `applied` receipt; `extract`, `fix`, `fetch` and `relax` stub very long lists (`--full` prints them).
+  See `references/result-envelope.md` and `docs/adr/`.
 - **Claude Code plugin.** The repository is now an installable plugin (`/plugin marketplace add
   markbujehein/gromatrix`): `.claude-plugin/`, `skills/`, `agents/`, `references/`, `examples/`.
   - Skills renamed without the prefix (`gromatrix:start`, `structure-prep`, `validate`, `gmx-builder`,
