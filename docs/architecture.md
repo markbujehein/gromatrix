@@ -52,7 +52,9 @@ gromatrix/
 ├── examples/manifest.yaml            # matrix definition consumed by step F
 ├── examples/pipeline.yaml            # one-command A-H run (gromatrix-pipeline)
 ├── benchmarks/                       # validation reports on real structure panels
-├── scripts/check_plugin.py           # validates plugin.json, marketplace.json, skills/ and agents/ (CI)
+├── scripts/check_plugin.py           # validates plugin.json, marketplace.json, skills/, agents/ and hooks/ (CI)
+├── scripts/hooks/                    # plugin hook scripts (stdlib only), wired by hooks/hooks.json
+├── hooks/hooks.json                  # PreToolUse guards, SubagentStop payload check, SessionStart status, event log
 ├── src/gromatrix/
 │   ├── net.py           # stdlib HTTP with retries + sha256 download cache
 │   ├── fetch.py         # [A] RCSB fetch: IDs, full-text or UniProt search
@@ -76,6 +78,7 @@ gromatrix/
 │   ├── report.py        # gromatrix-report: Markdown tables + figures for B-H; per-system plot README
 │   ├── plotstyle.py     # shared matplotlib style
 │   ├── compute.py       # gromatrix-compute: local / slurm / remote choice for step G
+│   ├── watch.py         # gromatrix-watch: one line per MD phase change per system, exits when all finished
 │   ├── pipeline.py      # A-H runner: manifest -> plan -> in-process steps, generated step-F manifest
 │   └── status.py        # gromatrix-status: A-H progress + next step (skill hand-off contract)
 ├── tests/                # unit tests + offline end-to-end regression (tests/data/)
@@ -104,6 +107,24 @@ gromatrix/
 └── 09-reports/                   # gromatrix-report: README.md with tables and figures for B-H
 All names are defined once, in src/gromatrix/layout.py.
 ```
+
+## Plugin hooks (a second layer)
+
+`hooks/hooks.json` runs small stdlib-only scripts from `scripts/hooks/`. They steer Claude; they do
+not replace the CLI gates, which stay authoritative and work without the plugin. A hook that errors
+allows the action.
+
+| Event | Script | Effect |
+|---|---|---|
+| PreToolUse Bash `gromatrix-run`, `gromatrix-analyze` | `subagent_only.py` | deny on the main thread; point to `gromatrix:md-runner` / `md-analyst` |
+| PreToolUse Bash | `bash_guard.py` | deny `-maxwarn` above 0, `gmx mdrun`, `rm -r` inside a numbered batch folder, `build --force` over MD results |
+| PreToolUse Read, Bash | `read_guard.py` | deny `*.xtc *.trr *.edr *.cpt` and whole `md.log` / `run.log` dumps |
+| SubagentStop md-runner, md-analyst | `subagent_payload.py` | block unless the last message is the one JSON payload; honours `stop_hook_active` |
+| SessionStart | `session_status.py` | in a batch directory, inject the `gromatrix-status` line as context |
+| PostToolUse(Failure) Bash `gromatrix-*` | `log_event.py` | append to `00-config/events.jsonl`; never fails the call |
+
+Unverified assumption: the main thread is recognised by a missing `agent_id` in the hook input; the
+hook docs do not state this. If it is wrong, delete the `subagent_only.py` handlers.
 
 ## Design notes per step
 

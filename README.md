@@ -303,6 +303,14 @@ Then ask for what you want: *"Use gromatrix to prepare 1XVP with CITCO as the ta
 | agent `gromatrix:md-analyst` | Runs step H and the batch report, returns one JSON payload |
 | `references/`, `examples/` | Batch layout, biophysical rules, compute modes, subagent contract; the final-report format example |
 
+The plugin also ships **hooks** (`hooks/hooks.json`, scripts in `scripts/hooks/`, Python stdlib only,
+so `python3` must be on PATH). They keep `gromatrix-run` and `gromatrix-analyze` inside the
+subagents, refuse `-maxwarn`, direct `gmx mdrun`, `rm -r` of batch folders and a `build --force` over
+MD results, keep trajectories and whole logs out of the context, check the subagents' JSON payload,
+inject `gromatrix-status` at session start, and log commands to `00-config/events.jsonl`. Hooks are a
+second layer: the `gromatrix-*` gates stay authoritative. `gromatrix-watch --batch-dir B` follows a
+run, one line per MD phase change.
+
 Skills load only when their step is reached and keep long detail in `references/` files that are read
 on demand, so a session pays for what it uses.
 
