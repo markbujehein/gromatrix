@@ -161,3 +161,33 @@ def test_add_full_flag():
     ap = argparse.ArgumentParser()
     result.add_full_flag(ap)
     assert ap.parse_args(["--full"]).full is True and ap.parse_args([]).full is False
+
+
+def test_receipt_marks_changed_options_and_drops_missing_values():
+    out = result.receipt(
+        {"a": 1, "b": 2, "c": None, "e": 7},
+        {"a": 1, "b": 3, "c": 5, "d": 9, "e": None},
+        {"x": 1, "y": None},
+    )
+    assert out == {
+        "options": {
+            "a": {"passed": 1, "used": 1, "changed": False},
+            "b": {"passed": 2, "used": 3, "changed": True},
+            "c": {"passed": None, "used": 5, "changed": False},
+        },
+        "facts": {"x": 1},
+    }
+
+
+def test_build_facts_come_only_from_the_stamps():
+    from gromatrix import gmx_prep
+
+    stamps = {
+        "A": {"atoms": 100, "solute_charge": -2.0, "components": {"ions": ["NA", "CL"]}},
+        "B": {"atoms": 50},
+    }
+    assert gmx_prep.build_facts(stamps) == {
+        "atoms": {"A": 100, "B": 50},
+        "solute_charge": {"A": -2.0},
+        "ions": {"A": 2},
+    }

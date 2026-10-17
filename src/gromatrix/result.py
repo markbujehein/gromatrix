@@ -131,6 +131,19 @@ STUBBABLE: dict[str, tuple[str, ...]] = {
 PROTECTED = frozenset({*ENVELOPE_ORDER, "warnings", "failed"})
 
 
+def receipt(options: dict, used: dict, facts: dict) -> dict:
+    """What a command did with its options (`changed` = it used a different value than it was given) and
+    the stage's key figures. Options whose used value is unknown, and facts that are None, are left out."""
+    return {
+        "options": {
+            k: {"passed": v, "used": used[k], "changed": v is not None and v != used[k]}
+            for k, v in options.items()
+            if used.get(k) is not None
+        },
+        "facts": {k: v for k, v in facts.items() if v is not None},
+    }
+
+
 def stub_large(rec: dict, command: str, out_dir: Path, limit: int = BRIEF_LIMIT) -> dict:
     """Replace each oversize STUBBABLE value by {"stub", "file", "chars"}; the full values go to a file."""
     from .net import atomic_write  # net imports this module, so import it late

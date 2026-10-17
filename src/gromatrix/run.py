@@ -495,6 +495,9 @@ def background(b: Path, argv: list[str]) -> dict:
 
 
 # ------------------------------------------------------------------ CLI
+RUN_OPTIONS = ("deffnm", "threads", "gpu_id", "maxh", "mdrun_args", "force")
+
+
 def cmd_run(a: argparse.Namespace, argv: list[str]) -> dict:
     b: Path = a.batch_dir
     if not (b / layout.SYSTEMS).is_dir():
@@ -549,8 +552,10 @@ def cmd_run(a: argparse.Namespace, argv: list[str]) -> dict:
     }
     (b / layout.BATCH_RUN).parent.mkdir(parents=True, exist_ok=True)
     atomic_write(b / layout.BATCH_RUN, json.dumps(summary, indent=2))
+    opts = {k: getattr(a, k) for k in RUN_OPTIONS}
     return {
         "ok": all(r["status"] == "done" for r in results),
+        "applied": result.receipt(opts, opts, {"systems": {r["id"]: r["status"] for r in results}}),
         "done": [r["id"] for r in results if r["status"] == "done"],
         "failed": [r for r in results if r["status"] == "failed"],
         "interrupted": [r["id"] for r in results if r["status"] == "interrupted"],
