@@ -8,8 +8,10 @@ prose. Design: docs/superpowers/specs/2026-10-17-result-envelope-design.md.
 
 from __future__ import annotations
 
+import argparse
 import json
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -117,7 +119,52 @@ def from_exception(exc: BaseException) -> dict:
     return fail(code if code in CODES else "unexpected", f"{type(exc).__name__}: {exc}")
 
 
-def finish(rec: dict, *, flush: bool = False) -> int:
-    """Print the result as one JSON line and return the process exit status."""
+# Brief mode. Only these keys of these commands are ever replaced by a stub, and only when their JSON is
+# longer than BRIEF_LIMIT characters (4000 is MDClaw's figure; unmeasured on gromatrix output).
+BRIEF_LIMIT = 4000
+STUBBABLE: dict[str, tuple[str, ...]] = {
+    "extract": ("units",),
+    "fix": ("fixed",),
+    "fetch": ("fetched",),
+    "relax": ("relaxed",),
+}
+PROTECTED = frozenset({*ENVELOPE_ORDER, "warnings", "failed"})
+
+
+def stub_large(rec: dict, command: str, out_dir: Path, limit: int = BRIEF_LIMIT) -> dict:
+    """Replace each oversize STUBBABLE value by {"stub", "file", "chars"}; the full values go to a file."""
+    from .net import atomic_write  # net imports this module, so import it late
+
+    big = {
+        k: len(json.dumps(rec[k]))
+        for k in STUBBABLE.get(command, ())
+        if k in rec and k not in PROTECTED and len(json.dumps(rec[k])) > limit
+    }
+    if not big:
+        return rec
+    path = Path(out_dir) / f"result-{command}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write(path, json.dumps({k: rec[k] for k in big}, indent=1))
+    return {k: {"stub": True, "file": str(path), "chars": big[k]} if k in big else v for k, v in rec.items()}
+
+
+def add_full_flag(ap: argparse.ArgumentParser) -> None:
+    ap.add_argument("--full", action="store_true", help="print large values in full instead of a stub + file")
+
+
+def finish(
+    rec: dict,
+    *,
+    command: str | None = None,
+    out_dir: Path | None = None,
+    full: bool = False,
+    flush: bool = False,
+) -> int:
+    """Print the result as one JSON line and return the process exit status.
+
+    With `command` and `out_dir`, oversize values of that command's STUBBABLE keys become stubs unless `full`.
+    """
+    if command and out_dir and not full:
+        rec = stub_large(rec, command, out_dir)
     print(json.dumps(order(rec)), flush=flush)
     return 0 if rec.get("ok") else 1

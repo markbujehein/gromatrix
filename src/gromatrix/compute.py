@@ -104,8 +104,7 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
 
     if a.cmd == "detect":
-        print(json.dumps({"ok": True, **detect()}))
-        return 0
+        return result.finish({"ok": True, **detect()})
     cfg = load(a.batch_dir)
     if a.cmd == "set":
         cfg = {**DEFAULTS, **{k: v for k, v in vars(a).items() if k in DEFAULTS and v is not None}}
@@ -120,8 +119,7 @@ def main(argv: list[str] | None = None) -> int:
     if a.cmd == "run-args":
         out["args"] = run_args(cfg)
         out["submit"] = cfg["mode"] == "slurm"  # remote: copy the batch and submit on the other machine
-    print(json.dumps(out))
-    return 0
+    return result.finish(out)
 
 
 if __name__ == "__main__":

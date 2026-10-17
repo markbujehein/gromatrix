@@ -556,8 +556,7 @@ def main(argv: list[str] | None = None) -> int:
         res = build_report(a.batch_dir, figures=not a.no_figures)
     except Exception as e:  # report generation must never be mistaken for a pipeline failure
         return result.finish(result.from_exception(e))
-    print(json.dumps(res))
-    return 0
+    return result.finish(res)
 
 
 if __name__ == "__main__":

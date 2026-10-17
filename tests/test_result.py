@@ -112,3 +112,52 @@ def test_non_integer_charge_is_check_failed():
     with pytest.raises(checks.CheckError) as e:
         checks.assert_integer_charge(0.4, "system A")
     assert result.from_exception(e.value)["code"] == "check_failed"
+
+
+BIG = [{"id": f"S{i}", "note": "x" * 80} for i in range(100)]  # well over BRIEF_LIMIT as JSON
+
+
+def test_stub_replaces_only_listed_oversize_keys(tmp_path):
+    rec = {"ok": True, "units": BIG, "other": BIG, "small": [1]}
+    out = result.stub_large(rec, "extract", tmp_path)
+    assert out["units"]["stub"] is True and out["units"]["chars"] == len(json.dumps(BIG))
+    assert out["other"] == BIG and out["small"] == [1]
+
+
+def test_stub_file_holds_the_full_value(tmp_path):
+    out = result.stub_large({"ok": True, "units": BIG}, "extract", tmp_path)
+    saved = json.loads((tmp_path / "result-extract.json").read_text())
+    assert saved == {"units": BIG} and out["units"]["file"] == str(tmp_path / "result-extract.json")
+
+
+def test_small_value_is_not_stubbed(tmp_path):
+    rec = {"ok": True, "units": [{"id": "A"}]}
+    assert result.stub_large(rec, "extract", tmp_path) == rec
+    assert not list(tmp_path.iterdir())
+
+
+def test_protected_keys_are_never_stubbed(tmp_path, monkeypatch):
+    monkeypatch.setitem(result.STUBBABLE, "demo", ("error", "warnings", "units"))
+    rec = {"ok": False, "error": "e" * 9000, "warnings": BIG, "units": BIG}
+    out = result.stub_large(rec, "demo", tmp_path)
+    assert out["error"] == rec["error"] and out["warnings"] == BIG and out["units"]["stub"] is True
+
+
+def test_command_without_a_stub_list_is_untouched(tmp_path):
+    rec = {"ok": True, "anything": BIG}
+    assert result.stub_large(rec, "status", tmp_path) == rec
+
+
+def test_finish_stubs_unless_full(tmp_path, capsys):
+    result.finish({"ok": True, "units": BIG}, command="extract", out_dir=tmp_path)
+    assert json.loads(capsys.readouterr().out)["units"]["stub"] is True
+    result.finish({"ok": True, "units": BIG}, command="extract", out_dir=tmp_path, full=True)
+    assert json.loads(capsys.readouterr().out)["units"] == BIG
+
+
+def test_add_full_flag():
+    import argparse
+
+    ap = argparse.ArgumentParser()
+    result.add_full_flag(ap)
+    assert ap.parse_args(["--full"]).full is True and ap.parse_args([]).full is False
