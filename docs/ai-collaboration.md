@@ -35,16 +35,16 @@ were designed out.
     and protonation, matrix completeness, compute. It also sets the step order.
   - Five stage skills each document only their own commands, with the details in
     `references/`.
-  - A test (`tests/test_package_skills.py`) fails if a stage skill's code blocks run another
+  - A test (`tests/test_plugin.py`) fails if a stage skill's code blocks run another
     stage's commands.
 - **Commands carry the logic; skills carry the judgement.**
   - Skills tell the agent to run commands and read their one-line JSON. They tell it never to
     re-implement a step, and never to work around a gate with a flag.
   - The forcefield lock, parameter caches and validation gates live in code, where an agent can't
     talk its way past them.
-- **Distribution is checked like code.** `scripts/package_skills.py` applies the same frontmatter
-  rules as claude.ai's skill upload, and CI runs it on every push. During development it caught
-  an invalid-YAML skill description before any user saw it.
+- **Distribution is checked like code.** `scripts/check_plugin.py` applies the same frontmatter
+  rules as the Claude skill upload, validates the plugin manifest and agents, and CI runs it on every push. It
+  has twice caught an invalid-YAML skill description before any user saw it.
 
 ## Human-in-the-loop domain interventions
 

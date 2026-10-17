@@ -2,8 +2,9 @@
 
 This is the engineering reference behind the [README](../README.md). It covers the problems each
 step solves, the code layout, the batch directory that carries all state, and the design decisions
-per step. The CLI flags for each step are in the matching agent skill's `references/cli.md`
-(`.claude/skills/<skill>/references/`).
+per step. The CLI flags for each step are in the matching skill's `references/cli.md`
+(`skills/<skill>/references/`); shared references (batch layout, biophysical rules, compute modes,
+subagent contract) are in the top-level `references/`.
 
 ## Contracts every step follows
 
@@ -41,7 +42,7 @@ per step. The CLI flags for each step are in the matching agent skill's `referen
 | Long runs die: walltime, node failure, Ctrl-C | Per-phase resume from `.cpt`; `-maxh` derived from the Slurm walltime; SIGTERM forwarded so mdrun checkpoints; stale downstream output never chained (G) |
 | A blown-up equilibration silently feeds production | EM convergence and zero-LINCS gates on NVT/NPT before production starts (G) |
 | PBC artefacts and group-number scripts in analysis | `trjconv -pbc mol -center` then `-fit`, groups selected by name; target atoms taken from the build record, not guessed (H) |
-| Comparing many systems by eye | One `analysis_summary.csv` row per system, with drift/instability flags (H) |
+| Comparing many systems by eye | One `08-analysis/analysis_summary.csv` row per system, with drift/instability flags (H) |
 
 ## Repository layout
 
@@ -51,7 +52,7 @@ gromatrix/
 ├── examples/manifest.yaml            # matrix definition consumed by step F
 ├── examples/pipeline.yaml            # one-command A-H run (gmxprep-pipeline)
 ├── benchmarks/                       # validation reports on real structure panels
-├── scripts/package_skills.py         # validates + zips each skill for upload (used by the release workflow)
+├── scripts/check_plugin.py           # validates plugin.json, marketplace.json, skills/ and agents/ (CI)
 ├── src/gromatrix/
 │   ├── net.py           # stdlib HTTP with retries + sha256 download cache
 │   ├── fetch.py         # [A] RCSB fetch: IDs, full-text or UniProt search
@@ -71,29 +72,37 @@ gromatrix/
 │   ├── gmx_prep.py      # [F] CLI: lock / plan / build / verify / smoke
 │   ├── run.py           # [G] MD protocol: phase table, resume, gates, progress, background, Slurm array
 │   ├── analyze.py       # [H] trjconv PBC/fit, MDAnalysis metrics, plots, matrix summary
+│   ├── layout.py        # every batch folder and file name (numbered 00-config ... 09-reports)
+│   ├── report.py        # gromatrix-report: Markdown tables + figures for B-H; per-system plot README
+│   ├── plotstyle.py     # shared matplotlib style
+│   ├── compute.py       # gromatrix-compute: local / slurm / remote choice for step G
 │   ├── pipeline.py      # A-H runner: manifest -> plan -> in-process steps, generated step-F manifest
 │   └── status.py        # gmxprep-status: A-H progress + next step (skill hand-off contract)
 ├── tests/                # unit tests + offline end-to-end regression (tests/data/)
-└── .claude/skills/                   # agent skills: gromatrix (orchestrator), gromatrix-structure-prep,
-                                      # gromatrix-validate, gromatrix-gmx-builder, gromatrix-execution,
-                                      # gromatrix-analysis (each SKILL.md + references/)
+├── .claude-plugin/       # plugin.json + marketplace.json: the repository is a Claude Code plugin
+├── skills/               # start (orchestrator), structure-prep, validate, gmx-builder, execution, analysis
+├── agents/               # md-runner (step G), md-analyst (step H): subagents returning one JSON payload
+├── references/           # batch layout, biophysical rules, compute modes, subagent contract
+└── examples/             # manifests and the final-report format example
 ```
 
 ## Batch directory (created by the pipeline)
 
 ```
-<batch>/
-├── forcefield.lock.json          # single source of truth for the forcefield
-├── raw/ fixed/ units/ relaxed/   # outputs of A-D (one entry per structure ID)
-├── af/ af_report.csv afdb/       # E: per-chain metrics, superposed models, cached AF models
-├── params/<RES>/                 # one parameter set per ligand/cofactor, shared by all systems
-├── systems/<ID>/                 # E1, T1, E1__T1 ...: topol.top, solv_ions.gro, index.ndx, em.tpr, run.sh
+<batch>/                            # numbered in pipeline order; related folders share a number
+├── 00-config/                    # forcefield.lock.json (the forcefield), compute.json, pipeline files
+├── 01-raw/ 02-fixed/             # A fetch, B fix (one entry per structure ID)
+├── 03-units/ 04-relaxed/         # C extract, D relax
+├── 05-alphafold/                 # E: <ID>.json, af_report.csv, superposed models (05-alphafold-cache/: AF files)
+├── 06-params/<RES>/              # one parameter set per ligand/cofactor, shared by all systems
+├── 06-systems/<ID>/              # E1, T1, E1__T1 ...: topol.top, solv_ions.gro, index.ndx, em.tpr, run.sh
 │   ├── run.json, run.log         # G: per-phase state; {em,nvt,npt,md}.{tpr,cpt,gro,log,edr}, md.xtc
-│   └── analysis/                 # H: analysis.json, rmsd.png, rmsf.png, rg.png, hbonds.png
-├── slurm/run_array.sbatch        # G --slurm
-├── matrix.json                   # F
-├── analysis_summary.csv          # H: one row per system
-└── manifest.generated.yaml, pipeline.json   # gmxprep-pipeline
+│   └── analysis/                 # H: analysis.json, rmsd/rmsf/rg/hbonds.png and a README explaining them
+├── 06-systems/matrix.json        # F
+├── 07-run-logs/ 07-slurm/        # G: background progress; run_array.sbatch for --slurm
+├── 08-analysis/                  # H: analysis_summary.csv, one row per system
+└── 09-reports/                   # gromatrix-report: README.md with tables and figures for B-H
+All names are defined once, in src/gromatrix/layout.py.
 ```
 
 ## Design notes per step

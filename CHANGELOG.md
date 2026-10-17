@@ -3,6 +3,19 @@
 ## v0.2.0 (alpha, unreleased)
 
 ### Added
+- **Claude Code plugin.** The repository is now an installable plugin (`/plugin marketplace add
+  markbujehein/gromatrix`): `.claude-plugin/`, `skills/`, `agents/`, `references/`, `examples/`.
+  - Skills renamed without the prefix (`gromatrix:start`, `structure-prep`, `validate`, `gmx-builder`,
+    `execution`, `analysis`) with descriptions in the form what / when / covers.
+  - Subagents `gromatrix:md-runner` (G) and `gromatrix:md-analyst` (H): the orchestrator never runs
+    `gmxprep-run` or `gmxprep-analyze` itself; the agents return one JSON payload.
+  - `gmxprep-status` `next` now carries `agent` for G and H and plugin-namespaced skill names.
+  - Replaces the standalone skill zips and `scripts/package_skills.py` with `scripts/check_plugin.py`.
+- **`gromatrix-compute`**: stores where MD runs (local, Slurm, remote) in `00-config/compute.json`;
+  CPU-only is fine; the orchestrator asks once before step G.
+- **`gromatrix-report`**: `09-reports/README.md` with tables and figures for steps B-H, and a README in
+  every system's `analysis/` folder explaining each plot.
+- MIT `LICENSE` and `THIRD_PARTY_NOTICES.md`.
 - **G `gmxprep-run`**: runs EM → NVT → NPT → production for every built system.
   - Per-phase resume from checkpoints (`mdrun -cpi`).
   - Gates: EM convergence, plus zero LINCS warnings in NVT/NPT.
@@ -28,6 +41,8 @@
   extra `analysis`.
 
 ### Changed
+- **Breaking: numbered batch folders** (`00-config` ... `09-reports`), all defined in `gromatrix.layout`.
+  Batches from earlier development builds must be recreated or their folders renamed.
 - Step F runs `pdb2gmx -renum`, so insertion codes stay distinct residues. It records
   `protein_residue_labels` (author labels) for step H. A build-recipe version in `inputs_sha`
   rebuilds existing systems once.

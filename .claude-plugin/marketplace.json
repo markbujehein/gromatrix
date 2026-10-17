@@ -1,0 +1,14 @@
+{
+  "name": "gromatrix",
+  "owner": { "name": "Mark Sørensen" },
+  "description": "The gromatrix molecular-dynamics workflow plugin for Claude Code.",
+  "plugins": [
+    {
+      "name": "gromatrix",
+      "source": "./",
+      "description": "Structure prep, OpenMM validation, GROMACS builds, MD runs and trajectory analysis for receptor x target matrices, with subagents for the long steps.",
+      "category": "science",
+      "tags": ["gromacs", "molecular-dynamics", "structural-biology"]
+    }
+  ]
+}
