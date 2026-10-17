@@ -8,6 +8,7 @@ Checks, with the same rules `claude plugin validate` and the skill uploader appl
 - every skills/<name>/SKILL.md: YAML frontmatter with allowed keys only, `name` equal to the folder
   name, a `description` of at most 1024 characters with no angle brackets, no nested SKILL.md;
 - every agents/<name>.md: frontmatter `name` equal to the file name, a description, a tools list;
+- hooks/hooks.json: valid JSON, command handlers only, every ${CLAUDE_PLUGIN_ROOT} script exists;
 - every ${CLAUDE_PLUGIN_ROOT}/<path> mentioned in a skill or agent exists.
 
 Exit codes: 0 = ok, 1 = a problem was found. Prints one JSON line.
@@ -107,6 +108,28 @@ def check_manifests(root: Path) -> list[str]:
     return errors
 
 
+def check_hooks(root: Path) -> list[str]:
+    """hooks/hooks.json: valid JSON, known structure, and every ${CLAUDE_PLUGIN_ROOT} script exists."""
+    path = root / "hooks" / "hooks.json"
+    if not path.is_file():
+        return []
+    try:
+        hooks = json.loads(path.read_text())["hooks"]
+    except (ValueError, KeyError) as e:
+        return [f"hooks/hooks.json: invalid JSON or no top-level 'hooks' key: {e}"]
+    errors = []
+    for event, groups in hooks.items():
+        for group in groups:
+            for h in group.get("hooks", []):
+                if h.get("type") != "command" or not h.get("command"):
+                    errors.append(f"hooks/hooks.json: {event}: handlers need type 'command' and a command")
+                    continue
+                for ref in ROOT_REF.findall(h["command"]):
+                    if not (root / ref).is_file():
+                        errors.append(f"hooks/hooks.json: {event}: ${{CLAUDE_PLUGIN_ROOT}}/{ref} does not exist")
+    return errors
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", type=Path, default=Path("."))
@@ -114,7 +137,7 @@ def main(argv: list[str] | None = None) -> int:
     root = a.root.resolve()
     skills = sorted(p for p in (root / "skills").glob("*") if p.is_dir())
     agents = sorted((root / "agents").glob("*.md"))
-    errors = check_manifests(root)
+    errors = check_manifests(root) + check_hooks(root)
     errors += [e for s in skills for e in check_skill(s)]
     errors += [e for g in agents for e in check_agent(g)]
     for md in [*root.glob("skills/**/*.md"), *agents]:
