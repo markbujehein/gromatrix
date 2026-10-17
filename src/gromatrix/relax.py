@@ -256,6 +256,7 @@ def _family(a) -> str:
     return resolve(a.forcefield).family if a.forcefield else "amber"
 
 
+@result.guarded
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="gromatrix-relax", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter

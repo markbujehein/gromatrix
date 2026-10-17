@@ -242,6 +242,7 @@ def _next_md(b: Path, systems: dict, compute: dict | None = None) -> dict:
     }
 
 
+@result.guarded
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="gromatrix-status", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter

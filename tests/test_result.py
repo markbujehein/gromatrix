@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -126,8 +127,8 @@ def test_stub_replaces_only_listed_oversize_keys(tmp_path):
 
 def test_stub_file_holds_the_full_value(tmp_path):
     out = result.stub_large({"ok": True, "units": BIG}, "extract", tmp_path)
-    saved = json.loads((tmp_path / "result-extract.json").read_text())
-    assert saved == {"units": BIG} and out["units"]["file"] == str(tmp_path / "result-extract.json")
+    saved = json.loads(Path(out["units"]["file"]).read_text())
+    assert saved == {"units": BIG} and Path(out["units"]["file"]).parent == tmp_path
 
 
 def test_small_value_is_not_stubbed(tmp_path):
@@ -189,5 +190,47 @@ def test_build_facts_come_only_from_the_stamps():
     assert gmx_prep.build_facts(stamps) == {
         "atoms": {"A": 100, "B": 50},
         "solute_charge": {"A": -2.0},
-        "ions": {"A": 2},
+        "input_ions": {"A": 2},
     }
+
+
+def test_guarded_turns_a_crash_into_an_unexpected_result_line(capsys):
+    @result.guarded
+    def main(argv=None):
+        raise PermissionError("read-only batch")
+
+    assert main([]) == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["ok"] is False and out["code"] == "unexpected" and "PermissionError" in out["error"]
+
+
+def test_guarded_passes_the_return_value_through(capsys):
+    @result.guarded
+    def main(argv=None):
+        return 2
+
+    assert main([]) == 2 and capsys.readouterr().out == ""
+
+
+def test_fetch_survives_a_malformed_reply(tmp_path, monkeypatch, capsys):
+    from gromatrix import fetch
+
+    def boom(*a, **k):
+        raise ValueError("Expecting value: line 1 column 1")
+
+    monkeypatch.setattr(fetch, "search", boom)
+    assert fetch.main(["--batch-dir", str(tmp_path), "--query", "x"]) == 1
+    assert json.loads(capsys.readouterr().out)["code"] == "unexpected"
+
+
+def test_a_failed_stub_write_keeps_the_full_value(tmp_path):
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("")
+    rec = {"ok": True, "units": BIG}
+    assert result.stub_large(rec, "extract", blocker) == rec
+
+
+def test_each_stub_call_writes_its_own_file(tmp_path):
+    a = result.stub_large({"ok": True, "units": BIG}, "extract", tmp_path)["units"]["file"]
+    b = result.stub_large({"ok": True, "units": BIG}, "extract", tmp_path)["units"]["file"]
+    assert a != b and Path(a).exists() and Path(b).exists()
