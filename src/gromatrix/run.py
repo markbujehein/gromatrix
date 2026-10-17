@@ -1,10 +1,10 @@
 """[G] Run the MD protocol of every built system: EM -> NVT -> NPT -> production.
 
     gmxprep-run --batch-dir B [--only ID ...] [--threads 8] [--gpu-id 0] [--deffnm md] [--maxh H]
-    gmxprep-run --batch-dir B --background            # detach; progress in B/run_logs/
+    gmxprep-run --batch-dir B --background            # detach; progress in B/07-run-logs/
     gmxprep-run --batch-dir B --slurm --time 24:00:00 [--partition gpu --gpus-per-task 1]
 
-Inputs are step F's systems/<id>/ (topol.top, index.ndx, mdp/, solv_ions.gro).
+Inputs are step F's 06-systems/<id>/ (topol.top, index.ndx, mdp/, solv_ions.gro).
 The phases chain exactly like run.sh: -r gives POSRES reference coordinates,
 -t carries velocities and box/thermostat state forward. -maxwarn is never used.
 
@@ -31,7 +31,7 @@ they arrive between phases.
 
 Output: progress lines {"step": "run", "system", "phase", "status", "progress_pct",
 "overall_pct"} while mdrun runs, then one summary line {"ok": ...}. State per
-system goes to systems/<id>/run.json, the batch run to B/run.json.
+system goes to 06-systems/<id>/run.json, the batch run to B/07-run-logs/run.json.
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import checks
+from . import checks, layout
 from . import mdp as mdpmod
 from .forcefields import load_lock
 from .gmx import ToolError, gmx_cmd, gmxlib_env, locate_ff_dir, run, tool_env
@@ -354,7 +354,7 @@ class Runner:
 def runnable(b: Path, only: list[str] | None, force: bool) -> tuple[list[tuple[Path, dict]], list[dict]]:
     """Built systems that may run. A failed smoke test blocks a system unless --force."""
     picked, skipped = [], []
-    for stamp_p in sorted((b / "systems").glob("*/system.json")):
+    for stamp_p in sorted((b / layout.SYSTEMS).glob("*/system.json")):
         wd = stamp_p.parent
         if only and wd.name not in only:
             continue
@@ -447,8 +447,8 @@ def write_slurm(b: Path, ids: list[str], a: argparse.Namespace) -> Path:
     if a.gpus_per_task:
         extra.append(f"#SBATCH --gpus-per-task={a.gpus_per_task}")
     more = (f" --mdrun-args {shlex.quote(a.mdrun_args)}" if a.mdrun_args else "") + (" --force" if a.force else "")
-    out = b / "slurm"
-    out.mkdir(exist_ok=True)
+    out = b / layout.SLURM
+    out.mkdir(parents=True, exist_ok=True)
     script = out / "run_array.sbatch"
     script.write_text(
         SBATCH.format(
@@ -475,8 +475,8 @@ def write_slurm(b: Path, ids: list[str], a: argparse.Namespace) -> Path:
 
 
 def background(b: Path, argv: list[str]) -> dict:
-    logs = b / "run_logs"
-    logs.mkdir(exist_ok=True)
+    logs = b / layout.RUN_LOGS
+    logs.mkdir(parents=True, exist_ok=True)
     log = logs / f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
     args = [x for x in argv if x != "--background"]  # exact: the parser rejects abbreviations
     with open(log, "w") as fh:
@@ -488,14 +488,14 @@ def background(b: Path, argv: list[str]) -> dict:
             start_new_session=True,  # survives the terminal / agent session that started it
         )
     batch = {"mode": "background", "pid": proc.pid, "host": socket.gethostname(), "log": str(log), "started": now()}
-    atomic_write(b / "run.json", json.dumps(batch, indent=2))
+    atomic_write(b / layout.BATCH_RUN, json.dumps(batch, indent=2))
     return {"ok": True, **batch, "next": f"gmxprep-status --batch-dir {b}  (or tail -f {log})"}
 
 
 # ------------------------------------------------------------------ CLI
 def cmd_run(a: argparse.Namespace, argv: list[str]) -> dict:
     b: Path = a.batch_dir
-    if not (b / "systems").is_dir():
+    if not (b / layout.SYSTEMS).is_dir():
         raise FileNotFoundError(f"{b}/systems not found: build the systems first (gmxprep-gmx build)")
     picked, skipped = runnable(b, a.only, a.force)
     if not picked:
@@ -545,7 +545,8 @@ def cmd_run(a: argparse.Namespace, argv: list[str]) -> dict:
         "finished": now(),
         "systems": {r["id"]: r["status"] for r in results},
     }
-    atomic_write(b / "run.json", json.dumps(summary, indent=2))
+    (b / layout.BATCH_RUN).parent.mkdir(parents=True, exist_ok=True)
+    atomic_write(b / layout.BATCH_RUN, json.dumps(summary, indent=2))
     return {
         "ok": all(r["status"] == "done" for r in results),
         "done": [r["id"] for r in results if r["status"] == "done"],
@@ -576,8 +577,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--force", action="store_true", help="also run systems whose smoke test failed")
     ap.add_argument("--poll", type=float, default=30.0, help="seconds between progress lines")
     mode = ap.add_mutually_exclusive_group()
-    mode.add_argument("--background", action="store_true", help="detach; follow B/run_logs/*.jsonl")
-    mode.add_argument("--slurm", action="store_true", help="write B/slurm/run_array.sbatch instead of running")
+    mode.add_argument("--background", action="store_true", help="detach; follow B/07-run-logs/*.jsonl")
+    mode.add_argument("--slurm", action="store_true", help="write B/07-slurm/run_array.sbatch instead of running")
     s = ap.add_argument_group("slurm")
     s.add_argument("--time", default="24:00:00", help="walltime per array task (Slurm --time format)")
     s.add_argument("--partition")

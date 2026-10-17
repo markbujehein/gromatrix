@@ -9,15 +9,17 @@ and `next`, the skill and command that should run next. Every skill starts by
 running this instead of re-reading files.
 
 State lives entirely in the batch directory:
-    forcefield.lock.json         lock            (set once, read by D and F)
-    raw/<ID>.cif, cache.json     A  fetch
-    fixed/<ID>.pdb, .meta.json   B  fix
-    units/<ID>/unit.json         C  extract      (selected unit, targets, files, altloc plan)
-    relaxed/<ID>/relax.json      D  relax        (per-file ok / failed + label)
-    af/<ID>.json, af_report.csv  E  afcompare
-    systems/<ID>/system.json     F  gmx build    (status, smoke result)
-    systems/<ID>/run.json        G  run          (per-phase status; done/running/failed/interrupted)
-    systems/<ID>/analysis/analysis.json  H  analyze  (metrics, flags), analysis_summary.csv
+    00-config/forcefield.lock.json            lock            (set once, read by D and F)
+    01-raw/<ID>.cif, cache.json               A  fetch
+    02-fixed/<ID>.pdb, .meta.json             B  fix
+    03-units/<ID>/unit.json                   C  extract      (selected unit, targets, files, altloc plan)
+    04-relaxed/<ID>/relax.json                D  relax        (per-file ok / failed + label)
+    05-alphafold/<ID>.json, af_report.csv     E  afcompare
+    06-systems/<ID>/system.json               F  gmx build    (status, smoke result)
+    06-systems/<ID>/run.json                  G  run          (per-phase status; done/running/failed/interrupted)
+    06-systems/<ID>/analysis/analysis.json    H  analyze      (metrics, flags)
+    08-analysis/analysis_summary.csv          H  analyze      (matrix-wide table)
+    09-reports/                               gromatrix-report (README and figures for every step)
 """
 
 from __future__ import annotations
@@ -26,6 +28,8 @@ import argparse
 import json
 import sys
 from pathlib import Path
+
+from . import layout
 
 ORCHESTRATOR = "gromatrix"
 STRUCTURE_SKILL, VALIDATE_SKILL, GMX_SKILL = "gromatrix-structure-prep", "gromatrix-validate", "gromatrix-gmx-builder"
@@ -40,29 +44,29 @@ def _json(path: Path) -> dict | None:
 
 
 def batch_status(b: Path) -> dict:
-    lock = _json(b / "forcefield.lock.json")
+    lock = _json(b / layout.LOCK)
     ids = sorted(
-        {p.stem.upper() for p in (b / "raw").glob("*") if p.suffix in (".cif", ".pdb")}
-        | {p.name for p in (b / "units").glob("*") if p.is_dir()}
+        {p.stem.upper() for p in (b / layout.RAW).glob("*") if p.suffix in (".cif", ".pdb")}
+        | {p.name for p in (b / layout.UNITS).glob("*") if p.is_dir()}
     )
     per_id: dict[str, dict] = {}
     for pid in ids:
         entry: dict = {
-            "fetched": any((b / "raw" / f"{pid}.{e}").exists() for e in ("cif", "pdb")),
-            "fixed": (b / "fixed" / f"{pid}.meta.json").exists(),
+            "fetched": any((b / layout.RAW / f"{pid}.{e}").exists() for e in ("cif", "pdb")),
+            "fixed": (b / layout.FIXED / f"{pid}.meta.json").exists(),
         }
-        unit = _json(b / "units" / pid / "unit.json")
+        unit = _json(b / layout.UNITS / pid / "unit.json")
         if unit:
             entry["unit"] = unit.get("selected") or ("error" if unit.get("error") else None)
             entry["targets"] = unit.get("targets", [])
             entry["matrix_files"] = (
                 sorted(unit.get("files", {}).values()) if isinstance(unit.get("files"), dict) else []
             )
-        relax = _json(b / "relaxed" / pid / "relax.json")
+        relax = _json(b / layout.RELAXED / pid / "relax.json")
         if relax:
             st = [f.get("status") for f in relax.get("files", {}).values()]
             entry["relax"] = {"ok": st.count("ok"), "failed": st.count("failed"), "skipped": st.count("skipped")}
-        af = _json(b / "af" / f"{pid}.json")
+        af = _json(b / layout.ALPHAFOLD / f"{pid}.json")
         if af:
             entry["af"] = {
                 "scored": sum(1 for r in af.values() if r.get("tm_score") is not None),
@@ -70,13 +74,13 @@ def batch_status(b: Path) -> dict:
             }
         per_id[pid] = entry
 
-    built = [p.parent for p in (b / "systems").glob("*/system.json") if (_json(p) or {}).get("status") == "ok"]
+    built = [p.parent for p in (b / layout.SYSTEMS).glob("*/system.json") if (_json(p) or {}).get("status") == "ok"]
     stamps = {wd.name: _json(wd / "system.json") or {} for wd in built}
     runs = {wd.name: _run_status(_json(wd / "run.json") or {}) for wd in built}
     analyses = {wd.name: (_json(wd / "analysis" / "analysis.json") or {}) for wd in built}
     sys_summary = {
         "built": len(built),
-        "failed": sum((p / "error.txt").exists() for p in (b / "systems").glob("*/")),
+        "failed": sum((p / "error.txt").exists() for p in (b / layout.SYSTEMS).glob("*/")),
         "smoke_ok": sum(bool(s.get("smoke", {}).get("ok")) for s in stamps.values()),
         "smoke_failed": sum(s.get("smoke", {}).get("ok") is False for s in stamps.values()),
         "run": {st: sorted(k for k, v in runs.items() if v == st) for st in RUN_STATES if st in runs.values()},
@@ -186,7 +190,7 @@ def _next_md(b: Path, systems: dict) -> dict:
         return {
             "skill": RUN_SKILL,
             "command": f"gmxprep-run --batch-dir {b} --only {' '.join(runs['failed'][:5])}",
-            "why": f"MD failed for {runs['failed'][:5]}: read systems/<id>/run.json, fix, rerun",
+            "why": f"MD failed for {runs['failed'][:5]}: read 06-systems/<id>/run.json, fix, rerun",
         }
     if systems["run_done"] + systems["smoke_failed"] < systems["built"]:
         if runs.get("running"):
@@ -215,7 +219,7 @@ def _next_md(b: Path, systems: dict) -> dict:
     return {
         "skill": None,
         "command": f"gmxprep-gmx verify --batch-dir {b}",
-        "why": "pipeline complete (A-H); verify and write the final report from analysis_summary.csv",
+        "why": "pipeline complete (A-H); verify and write the final report from 08-analysis/analysis_summary.csv",
     }
 
 

@@ -6,7 +6,7 @@ Policy, deterministic and never averaging:
    states. Their mean is not a physical structure: wherever conformers differ by a
    ring flip or rotamer, averaging collapses bonds (e.g. aromatic C-C to ~0.7 Å).
 2. Primary conformer per residue = highest mean occupancy; ties go to the
-   alphabetically first ID. This is what goes into fixed/<ID>.pdb.
+   alphabetically first ID. This is what goes into 02-fixed/<ID>.pdb.
 3. Every conformer is kept in meta.json. For each pair we report the raw RMSD
    and a symmetry-corrected RMSD: atoms are re-matched within each element
    (Hungarian assignment), so a flip of a symmetric ring, which is a

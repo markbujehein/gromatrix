@@ -27,6 +27,7 @@ import re
 import sys
 from pathlib import Path
 
+from . import layout
 from .net import Cache, HTTPError, get_json
 
 FILES = "https://files.rcsb.org/download/{id}.{ext}.gz"
@@ -147,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--method", choices=["xray", "em", "nmr"], help="filter for --uniprot")
     ap.add_argument("--max-resolution", type=float, help="Å, filter for --uniprot")
     ap.add_argument("--format", default="cif", choices=["cif", "pdb", "both"])
-    ap.add_argument("--out", default="raw")
+    ap.add_argument("--out", default=layout.RAW)
     ap.add_argument("--check-updates", action="store_true", help="refetch entries revised since caching")
     a = ap.parse_args(argv)
 

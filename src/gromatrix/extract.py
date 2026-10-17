@@ -43,7 +43,7 @@ from pathlib import Path
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import altlocs
+from . import altlocs, layout
 from .pdbio import ION_RES, WATER_RES, Atom, read_pdb, residues, write_pdb
 from .structure import POLYMER_RES, compose, entities_by_sequence, is_identity
 
@@ -654,8 +654,8 @@ def main(argv: list[str] | None = None) -> int:
         prog="gmxprep-extract", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--batch-dir", type=Path, required=True)
-    ap.add_argument("--in", dest="indir", default="fixed")
-    ap.add_argument("--out", default="units")
+    ap.add_argument("--in", dest="indir", default=layout.FIXED)
+    ap.add_argument("--out", default=layout.UNITS)
     ap.add_argument("--ids", nargs="+")
     ap.add_argument("--targets", help="target ligand residue names, e.g. LIG or LIG@1ABC,XYZ@2ABC")
     ap.add_argument("--target-chains", help="author chains of a protein/peptide target, e.g. E@1ABC")

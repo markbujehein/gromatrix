@@ -4,7 +4,7 @@
                 [--max-loop 8] [--waters none|ligand-shell|shell|all] [--water-shell 3.5]
                 [--keep-het all|none|RES,RES] [--keep-additives] [--keep-nonstandard]
 
-For every raw/<ID>.cif|.pdb this writes fixed/<ID>.pdb plus fixed/<ID>.meta.json,
+For every 01-raw/<ID>.cif|.pdb this writes 02-fixed/<ID>.pdb plus 02-fixed/<ID>.meta.json,
 which carries assemblies, entities and the gap report on to step C.
 
 What it does, in order:
@@ -39,7 +39,7 @@ from pathlib import Path
 import numpy as np
 from openmm.unit import angstrom
 
-from . import altlocs
+from . import altlocs, layout
 from .pdbio import ION_RES, WATER_RES, read_pdb, residues, write_pdb
 from .structure import POLYMER_RES, read_metadata, read_raw_atoms
 
@@ -322,8 +322,8 @@ def main(argv: list[str] | None = None) -> int:
         prog="gmxprep-fix", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--batch-dir", type=Path, required=True)
-    ap.add_argument("--in", dest="indir", default="raw")
-    ap.add_argument("--out", default="fixed")
+    ap.add_argument("--in", dest="indir", default=layout.RAW)
+    ap.add_argument("--out", default=layout.FIXED)
     ap.add_argument("--ids", nargs="+", help="restrict to these IDs (file stems)")
     ap.add_argument("--max-loop", type=int, default=8, help="longest internal gap PDBFixer may build (residues)")
     ap.add_argument("--waters", default="none", choices=["none", "ligand-shell", "shell", "all"])

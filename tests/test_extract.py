@@ -135,23 +135,23 @@ def test_1xvp_benchmark(tmp_path):
     pytest.importorskip("pdbfixer")
     from gromatrix import extract, fix
 
-    raw = tmp_path / "raw"
+    raw = tmp_path / "01-raw"
     raw.mkdir()
     with gzip.open(DATA / "1XVP.cif.gz", "rb") as src, open(raw / "1XVP.cif", "wb") as dst:
         shutil.copyfileobj(src, dst)
     assert fix.main(["--batch-dir", str(tmp_path)]) == 0
     assert extract.main(["--batch-dir", str(tmp_path), "--targets", "CID"]) == 0
-    rep = json.loads((tmp_path / "units" / "1XVP" / "unit.json").read_text())
+    rep = json.loads((tmp_path / "03-units" / "1XVP" / "unit.json").read_text())
     assert rep["selected"] == "assembly-2" and rep["chains"] == ["C", "D", "G", "H"]
     assert rep["metrics"]["inventory"] == {"F15": 1, "CID": 1}
     a1 = next(c for c in rep["candidates"] if c["id"] == "assembly-1")
     assert not a1["complete"] and a1["missing"] == {"CID": 1}
-    enzyme = (tmp_path / "units" / "1XVP" / "enzyme.pdb").read_text()
+    enzyme = (tmp_path / "03-units" / "1XVP" / "enzyme.pdb").read_text()
     assert " CID " not in enzyme and " F15 C" in enzyme
     assert extract.main(["--batch-dir", str(tmp_path), "--out", "u2", "--targets", "CID", "--assembly", "1"]) == 1
 
     # Alternate conformers: CITCO A/B are a chlorophenyl ring flip -> equivalent, no branch by default ...
-    meta = json.loads((tmp_path / "fixed" / "1XVP.meta.json").read_text())
+    meta = json.loads((tmp_path / "02-fixed" / "1XVP.meta.json").read_text())
     (cid,) = [g for g in meta["altlocs"] if g["resname"] == "CID"]
     assert cid["analysis"]["B"]["rmsd"] > 1.0 and cid["analysis"]["B"]["sym_rmsd"] < 0.5 and not cid["distinct"]
     assert rep["altlocs"]["CID"]["branch"] is False and "complex_CID" in rep["files"]
@@ -166,7 +166,7 @@ def test_1xvp_benchmark(tmp_path):
     from gromatrix import relax
 
     relax.main(["--batch-dir", str(tmp_path), "--files", "enzyme.pdb", "target_CID.pdb", "--platform", "CPU"])
-    rj = json.loads((tmp_path / "relaxed" / "1XVP" / "relax.json").read_text())["files"]
+    rj = json.loads((tmp_path / "04-relaxed" / "1XVP" / "relax.json").read_text())["files"]
     assert rj["enzyme.pdb"]["status"] == "ok" and rj["enzyme.pdb"]["rmsd_heavy"] < 2.5
     assert rj["target_CID.pdb"]["status"] == "skipped"
 

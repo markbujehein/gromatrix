@@ -119,7 +119,7 @@ def assert_integer_charge(q: float, where: str, tol: float = 1e-3) -> int:
     if abs(q - round(q)) > tol:
         raise CheckError(
             f"{where}: net charge {q:.4f} is not an integer - a ligand or residue "
-            "charge set is broken (check params/<RES>/meta.json and any edited .rtp)"
+            "charge set is broken (check 06-params/<RES>/meta.json and any edited .rtp)"
         )
     return int(round(q))
 
