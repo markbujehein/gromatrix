@@ -4,7 +4,7 @@
     CHARMM family -> CGenFF (.str from `cgenff` or user-supplied) -> cgenff_charmm2gmx.py
 
 One *template* per residue name is built and parameterised once per batch and
-cached in <batch>/params/<RES>/. Every pose of that residue in every system is
+cached in <batch>/06-params/<RES>/. Every pose of that residue in every system is
 mapped onto the template's atom order, so the enzyme-alone, target-alone and
 complex systems share byte-identical ligand topologies.
 """
@@ -260,7 +260,7 @@ def _run_cgenff(
     if max(pp, cp) > 10:
         warnings.append(f"{spec.resname}: CGenFF penalties param={pp} charge={cp} - validate")
     conv = os.environ.get("CGENFF2GMX", "cgenff_charmm2gmx_py3_nx2.py")
-    # Run from params/<RES>, so a bare script name must be resolved on PATH first.
+    # Run from 06-params/<RES>, so a bare script name must be resolved on PATH first.
     conv = shutil.which(conv) or conv
     if not Path(conv).is_file():
         raise ToolError(f"CGenFF converter '{conv}' not found; set CGENFF2GMX to its absolute path")
@@ -335,7 +335,7 @@ def parameterise(
     if [a["name"] for a in atoms] != template_names:
         raise LigandError(
             f"{spec.resname}: itp atom order differs from the template; regenerate the .str "
-            "from params/<RES>/template.mol2 so coordinates map onto the right atoms"
+            "from 06-params/<RES>/template.mol2 so coordinates map onto the right atoms"
         )
     q = sum(a["charge"] for a in atoms)
     if abs(q - charge) > 1e-3:  # same tolerance as step F's integer-charge gate

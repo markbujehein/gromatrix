@@ -14,7 +14,7 @@ FAKE_GMX = str(Path(__file__).with_name("fake_gmx.py"))
 
 
 def _system(b, sid="S1", sha="aaa", smoke=None):
-    wd = b / "systems" / sid
+    wd = b / "06-systems" / sid
     wd.mkdir(parents=True)
     stamp = {"id": sid, "status": "ok", "inputs_sha": sha, "role": "complex"}
     if smoke is not None:
@@ -113,7 +113,7 @@ def test_gates_em_convergence_and_lincs(batch, monkeypatch, capsys):
     assert runmod.phase_state(wd, runmod.PHASES[0], "em") == "new" and (wd / "em.failed.gro").exists()
 
     for s in ("S1", "S2"):
-        for f in (batch / "systems" / s).glob("em.*"):
+        for f in (batch / "06-systems" / s).glob("em.*"):
             f.unlink()
     assert _run(batch, "--only", "S1", env={"FAKE_GMX_LINCS": "nvt"}, monkeypatch=monkeypatch) == 1
     assert "LINCS" in json.loads((wd / "run.json").read_text())["reason"]
@@ -232,7 +232,7 @@ def test_maxh_is_one_budget_for_the_invocation(batch, monkeypatch, capsys):
     monkeypatch.setattr(runmod.time, "monotonic", lambda: float(next(clock)))
     assert _run(batch, "--maxh", "0.5") == 1  # em, nvt, npt fit; production does not
     out = json.loads(capsys.readouterr().out.splitlines()[-1])
-    maxh = [float(c[c.index("-maxh") + 1]) for c in _calls(batch / "systems" / "S1") if c[0] == "mdrun"]
+    maxh = [float(c[c.index("-maxh") + 1]) for c in _calls(batch / "06-systems" / "S1") if c[0] == "mdrun"]
     assert maxh == sorted(maxh, reverse=True) and maxh[0] < 0.5  # what is left, not the full hour
     assert out["interrupted"] == ["S1"] and out["not_started"] == ["S2"]  # budget ends the batch
 

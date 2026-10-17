@@ -7,7 +7,7 @@
     gmx_prep smoke  --batch-dir B [--only ID ...] [--nvt-steps 5000]
 
 Each command prints one compact JSON object on stdout; tool chatter goes to
-<batch>/systems/<id>/build.log and <batch>/params/<RES>/param.log.
+<batch>/06-systems/<id>/build.log and <batch>/06-params/<RES>/param.log.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from pathlib import Path
 
 import yaml
 
-from . import checks
+from . import checks, layout
 from . import mdp as mdpmod
 from . import topology as topo
 from .forcefields import ForceField, ForcefieldMismatch, acquire_lock, assert_same, load_lock, resolve
@@ -258,7 +258,7 @@ def _link_ff(wd: Path, ctx: Ctx) -> None:
 
 def build_system(sd: SystemDef, ctx: Ctx) -> dict:
     ff, a = ctx.ff, ctx.args
-    wd = ctx.batch / "systems" / sd.id
+    wd = layout.system_dir(ctx.batch, sd.id)
     stamp_path = wd / "system.json"
     digest = inputs_hash(sd, ctx)
     if stamp_path.exists() and not a.force:
@@ -330,7 +330,7 @@ def build_system(sd: SystemDef, ctx: Ctx) -> dict:
             block,
             ff,
             ctx.ff_dir,
-            ctx.batch / "params",
+            ctx.batch / layout.PARAMS,
             a.allow_auto_protonation,
             a.accept_high_penalty,
             refresh=a.force,
@@ -525,10 +525,11 @@ def cmd_build(a) -> dict:
         except ForcefieldMismatch:
             raise
         except Exception as e:  # keep going; report per system
-            (ctx.batch / "systems" / sd.id).mkdir(parents=True, exist_ok=True)
-            (ctx.batch / "systems" / sd.id / "error.txt").write_text(traceback.format_exc())
+            layout.system_dir(ctx.batch, sd.id).mkdir(parents=True, exist_ok=True)
+            (layout.system_dir(ctx.batch, sd.id) / "error.txt").write_text(traceback.format_exc())
             results.append({"id": sd.id, "role": sd.role, "status": "failed", "error": str(e)[:400]})
-    (ctx.batch / "matrix.json").write_text(
+    (ctx.batch / layout.MATRIX).parent.mkdir(parents=True, exist_ok=True)
+    (ctx.batch / layout.MATRIX).write_text(
         json.dumps({"forcefield": ff.identity(), "missing_pairs": m.missing_pairs, "systems": results}, indent=2)
     )
     return {
@@ -547,12 +548,12 @@ def cmd_verify(a) -> dict:
         search = [locate_ff_dir(ff.gmx_name, a.gmx, [a.batch_dir.resolve()]).parent]
     except ToolError:
         search = [a.batch_dir.resolve()]
-    for meta in sorted((a.batch_dir / "params").glob("*/meta.json")):
+    for meta in sorted((a.batch_dir / layout.PARAMS).glob("*/meta.json")):
         try:
             assert_same(ff, json.loads(meta.read_text())["forcefield"], str(meta.parent))
         except ForcefieldMismatch as e:
             problems.append(str(e))
-    systems = sorted((a.batch_dir / "systems").glob("*/"))
+    systems = sorted((a.batch_dir / layout.SYSTEMS).glob("*/"))
     for sd in systems:
         stamp_p = sd / "system.json"
         if not stamp_p.exists():
@@ -581,7 +582,7 @@ def cmd_verify(a) -> dict:
         smoke = stamp.get("smoke")
         if smoke and not smoke.get("ok"):
             problems.append(f"{sd.name}: smoke test failed: {smoke.get('reason')}")
-    matrix = a.batch_dir / "matrix.json"
+    matrix = a.batch_dir / layout.MATRIX
     if matrix.exists():
         mj = json.loads(matrix.read_text())
         if mj.get("missing_pairs"):
@@ -645,7 +646,7 @@ def cmd_smoke(a) -> dict:
     ff = load_lock(a.batch_dir)
     env = gmxlib_env(locate_ff_dir(ff.gmx_name, a.gmx, [a.batch_dir.resolve()]))
     out = []
-    for stamp_p in sorted((a.batch_dir / "systems").glob("*/system.json")):
+    for stamp_p in sorted((a.batch_dir / layout.SYSTEMS).glob("*/system.json")):
         wd = stamp_p.parent
         if a.only and wd.name not in a.only:
             continue

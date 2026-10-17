@@ -3,13 +3,13 @@
     gmxprep-afcompare --batch-dir B [--in relaxed] [--ids 1ABC ...]
                       [--files enzyme.pdb target_*.pdb] [--uniprot A:P12345,B:Q67890[@ID]]
                       [--plddt-min 70] [--min-length 30] [--tm-min 0.8] [--lddt-min 0.7]
-                      [--out af_report.csv] [--afdb-dir afdb]
+                      [--out 05-alphafold/af_report.csv] [--afdb-dir 05-alphafold-cache]
 
 Per protein chain:
   1. UniProt accession: --uniprot if given, otherwise from SIFTS (PDBe API; RCSB
      Data API when PDBe has no record) using the chain's *author* ID. For fusion
      constructs the accession covering most of the chain is used. Chains renamed
-     during assembly building are traced back through units/<ID>/unit.json.
+     during assembly building are traced back through 03-units/<ID>/unit.json.
   2. AFDB model: the prediction API gives the current model URL (model version
      recorded). Files are cached by sha256 in <batch>/<afdb-dir>/.
   3. Residue correspondence by global sequence alignment of the experimental
@@ -26,7 +26,7 @@ Per protein chain:
      --min-length (e.g. coactivator peptides) are reported but not scored.
      These metrics are not meaningful for chains that short.
   5. The AF model, superposed onto the experimental chain, is written to
-     <batch>/af/<ID>/AF_<chain>_<UniProt>.pdb for visual inspection.
+     <batch>/05-alphafold/<ID>/AF_<chain>_<UniProt>.pdb for visual inspection.
 """
 
 from __future__ import annotations
@@ -41,6 +41,7 @@ from pathlib import Path
 
 import numpy as np
 
+from . import layout
 from .net import Cache, HTTPError, atomic_write, get_json
 from .pdbio import PROTEIN_RES, read_pdb, write_pdb
 
@@ -295,7 +296,7 @@ def main(argv: list[str] | None = None) -> int:
         prog="gmxprep-afcompare", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--batch-dir", type=Path, required=True)
-    ap.add_argument("--in", dest="indir", default="relaxed")
+    ap.add_argument("--in", dest="indir", default=layout.RELAXED)
     ap.add_argument("--ids", nargs="+")
     ap.add_argument("--files", nargs="+", default=["enzyme.pdb", "target_*.pdb"])
     ap.add_argument("--uniprot", help="explicit chain:accession map, e.g. A:P12345,B:Q67890@1ABC")
@@ -303,8 +304,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--min-length", type=int, default=30)
     ap.add_argument("--tm-min", type=float, default=0.8)
     ap.add_argument("--lddt-min", type=float, default=0.7)
-    ap.add_argument("--out", default="af_report.csv")
-    ap.add_argument("--afdb-dir", default="afdb")
+    ap.add_argument("--out", default=layout.AF_REPORT)
+    ap.add_argument("--afdb-dir", default=layout.ALPHAFOLD_CACHE)
     a = ap.parse_args(argv)
 
     root = a.batch_dir / a.indir
@@ -319,7 +320,7 @@ def main(argv: list[str] | None = None) -> int:
     for u in units:
         pid = u.name.upper()
         origin = {}
-        uj = a.batch_dir / "units" / u.name / "unit.json"
+        uj = a.batch_dir / layout.UNITS / u.name / "unit.json"
         if uj.exists():
             origin = {c: o.split("/")[0] for c, o in json.loads(uj.read_text()).get("chain_origin", {}).items()}
         manual = _scoped_map(a.uniprot, pid)
@@ -349,7 +350,7 @@ def main(argv: list[str] | None = None) -> int:
                 row["status"] = f"skipped: {len(ca)} residues < --min-length"
             else:
                 try:
-                    row.update(compare_chain(ch, ca, acc, cache, a, a.batch_dir / "af" / u.name))
+                    row.update(compare_chain(ch, ca, acc, cache, a, a.batch_dir / layout.ALPHAFOLD / u.name))
                     row["status"] = "flagged" if row["flags"] else "ok"
                 except (HTTPError, LookupError) as e:
                     row["status"] = f"error: {e}"
@@ -358,8 +359,8 @@ def main(argv: list[str] | None = None) -> int:
             rows.append(row)
             if row["status"] == "flagged":
                 flagged.append({k: row[k] for k in ("id", "chain", "uniprot", "tm_score", "lddt_ca", "flags")})
-        (a.batch_dir / "af").mkdir(exist_ok=True)
-        (a.batch_dir / "af" / f"{pid}.json").write_text(json.dumps(details, indent=1))
+        (a.batch_dir / layout.ALPHAFOLD).mkdir(parents=True, exist_ok=True)
+        (a.batch_dir / layout.ALPHAFOLD / f"{pid}.json").write_text(json.dumps(details, indent=1))
 
     cols = [
         "id",
@@ -380,6 +381,7 @@ def main(argv: list[str] | None = None) -> int:
         "tm_score",
         "lddt_ca",
     ]
+    (a.batch_dir / a.out).parent.mkdir(parents=True, exist_ok=True)
     with open(a.batch_dir / a.out, "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore")
         w.writeheader()

@@ -174,7 +174,7 @@ def test_build_refuses_to_delete_md_results(tmp_path):
 
     pdb = tmp_path / "e.pdb"
     pdb.write_text("ATOM\n")
-    wd = tmp_path / "B" / "systems" / "E1"
+    wd = tmp_path / "B" / "06-systems" / "E1"
     wd.mkdir(parents=True)
     (wd / "system.json").write_text(json.dumps({"status": "ok", "inputs_sha": "old"}))
     (wd / "run.json").write_text(json.dumps({"status": "done"}))

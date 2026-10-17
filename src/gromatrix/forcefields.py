@@ -1,6 +1,6 @@
 """Forcefield registry and the batch-level forcefield lock.
 
-Every batch directory carries a ``forcefield.lock.json``. The first command that
+Every batch directory carries a ``00-config/forcefield.lock.json``. The first command that
 touches a batch writes it; every later command compares its requested forcefield
 against it and aborts on any difference. Ligand parameter caches and per-system
 stamps record the same identity, so ``gmx_prep verify`` can prove that an entire
@@ -13,7 +13,9 @@ import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-LOCK_NAME = "forcefield.lock.json"
+from . import layout
+
+LOCK_NAME = layout.LOCK
 
 
 class ForcefieldMismatch(RuntimeError):
@@ -149,7 +151,7 @@ def acquire_lock(batch_dir: Path, requested: str | None) -> ForceField:
     if requested is None:
         raise ForcefieldMismatch(f"{path} missing and no --forcefield given")
     ff = resolve(requested)
-    Path(batch_dir).mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(ff.identity(), indent=2) + "\n")
     return ff
 

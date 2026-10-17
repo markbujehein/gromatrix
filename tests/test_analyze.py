@@ -97,7 +97,7 @@ def test_selections_from_index_groups():
 def test_cli_end_to_end_with_prepared_trajectory(tmp_path, traj, monkeypatch, capsys):
     gro, xtc, n_prot = traj
     b = tmp_path / "B"
-    wd = b / "systems" / "E1__LIG"
+    wd = b / "06-systems" / "E1__LIG"
     wd.mkdir(parents=True)
     (wd / "system.json").write_text(
         json.dumps({"id": "E1__LIG", "role": "complex", "enzyme": "E1", "target": "LIG", "status": "ok",
@@ -131,7 +131,7 @@ def test_cli_end_to_end_with_prepared_trajectory(tmp_path, traj, monkeypatch, ca
     assert rep["rmsf"]["label"][-1] == "A:104A"  # author labels, insertion code kept
     for p in rep["plots"]:
         assert (wd / "analysis" / p).read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
-    (row,) = csv.DictReader(open(b / "analysis_summary.csv"))
+    (row,) = csv.DictReader(open(b / "08-analysis" / "analysis_summary.csv"))
     assert row["id"] == "E1__LIG" and row["top_hbond"] == "LIG7:O1->ALA3:O" and row["flags"] == "ligand_drift"
 
     # An up-to-date analysis is reused; changed settings recompute it.
@@ -143,7 +143,7 @@ def test_cli_end_to_end_with_prepared_trajectory(tmp_path, traj, monkeypatch, ca
     assert not json.loads((wd / "analysis" / "analysis.json").read_text())["flags"]
 
     # --only on another system keeps this system's row in the summary.
-    other = b / "systems" / "E1"
+    other = b / "06-systems" / "E1"
     other.mkdir()
     (other / "system.json").write_text(json.dumps({"id": "E1", "role": "enzyme", "status": "ok"}))
     (other / "run.json").write_text(json.dumps({"status": "done"}))
@@ -153,7 +153,7 @@ def test_cli_end_to_end_with_prepared_trajectory(tmp_path, traj, monkeypatch, ca
     assert analyze.main(["--batch-dir", str(b), "--only", "E1"]) == 1  # unexpected error: reported, not raised
     out = json.loads(capsys.readouterr().out)
     assert out["failed"][0]["reason"].startswith("RuntimeError") and out["summary_rows"] == 1
-    assert [r["id"] for r in csv.DictReader(open(b / "analysis_summary.csv"))] == ["E1__LIG"]
+    assert [r["id"] for r in csv.DictReader(open(b / "08-analysis" / "analysis_summary.csv"))] == ["E1__LIG"]
 
     # Unfinished runs are skipped.
     (wd / "run.json").write_text(json.dumps({"status": "running"}))

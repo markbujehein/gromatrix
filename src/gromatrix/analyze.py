@@ -4,7 +4,7 @@
                     [--hbond-distance 3.0] [--hbond-angle 150] [--hbond-min-occupancy 0.1]
                     [--ligand-rmsd-max 3.0] [--ca-rmsd-max 4.0]
 
-Per system (systems/<id>/analysis/):
+Per system (06-systems/<id>/analysis/):
   1. PBC removal with GROMACS, by index-group *name* (never by number):
        convert-tpr   solute-only run input (the Solute group is a prefix of the
                      system, so every index group keeps its atom numbers)
@@ -19,7 +19,7 @@ Per system (systems/<id>/analysis/):
        (geometric: D-A < 3.0 Å, D-H-A > 150°) with the occupancy of every
        donor/acceptor pair and the count per frame.
   3. analysis.json, rmsd.png, rmsf.png, rg.png and hbonds.png, and one row per
-     system in B/analysis_summary.csv for comparing the matrix.
+     system in B/08-analysis/analysis_summary.csv for comparing the matrix.
 
 What the target is comes from step F's system.json: `target_resname` for a
 ligand, `target_residues` for a protein target folded into the enzyme molecule.
@@ -39,9 +39,14 @@ from pathlib import Path
 
 import numpy as np
 
-from . import checks
+from . import checks, layout
 from .gmx import gmx_cmd, run
 from .pdbio import read_gro
+from .plotstyle import C1, C2, INK, MUTED
+from .plotstyle import figure as _figure
+from .plotstyle import save as _save
+from .plotstyle import style as _style
+from .report import analysis_readme
 
 BACKBONE = {"N", "CA", "C"}
 
@@ -278,42 +283,6 @@ def flags(res: dict, role: str, a: argparse.Namespace) -> list[str]:
 
 
 # ------------------------------------------------------------------ plots
-# Reference categorical slots (light surface): protein = slot 1, target = slot 2.
-INK, MUTED, GRID, C1, C2 = "#0b0b0b", "#52514e", "#e4e3df", "#2a78d6", "#eb6834"
-
-
-def _style(ax, title: str, xlabel: str, ylabel: str | None, grid: str = "both") -> None:
-    ax.set_title(title, loc="left", fontsize=10, color=INK)
-    ax.set_xlabel(xlabel, fontsize=9, color=MUTED)
-    if ylabel:
-        ax.set_ylabel(ylabel, fontsize=9, color=MUTED)
-    ax.tick_params(colors=MUTED, labelsize=8)
-    for side in ("top", "right"):
-        ax.spines[side].set_visible(False)
-    for side in ("left", "bottom"):
-        ax.spines[side].set_color(GRID)
-    ax.grid(True, color=GRID, linewidth=0.6, axis=grid)
-    ax.set_axisbelow(True)
-
-
-def _figure(ncols: int = 1, size=(6.4, 3.6), **kw):
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    return plt.subplots(1, ncols, figsize=size, dpi=200, **kw)
-
-
-def _save(fig, path: Path) -> str:
-    import matplotlib.pyplot as plt
-
-    fig.tight_layout()
-    fig.savefig(path)
-    plt.close(fig)
-    return path.name
-
-
 def _hbond_plot(hb: dict, t: list[float], sysid: str, path: Path) -> str:
     fig, (ax1, ax2) = _figure(2, (9.6, 3.8), gridspec_kw={"width_ratios": [1.2, 1]})
     _style(ax1, f"{sysid}: target-enzyme H-bonds per frame", "time (ns)", "H-bonds", grid="y")
@@ -417,6 +386,7 @@ def analyse_system(wd: Path, a: argparse.Namespace) -> dict:
     report["flags"] = flags(res, stamp.get("role"), a)
     report["plots"] = plots(res, wd.name, out)
     report_p.write_text(json.dumps(report, indent=1))
+    (out / "README.md").write_text(analysis_readme(report))
     return report
 
 
@@ -431,12 +401,13 @@ def write_summary(b: Path) -> int:
     """analysis_summary.csv from every system's analysis.json, so `--only X` never drops
     the other systems' rows. Returns the number of rows."""
     rows = []
-    for p in sorted((b / "systems").glob("*/analysis/analysis.json")):
+    for p in sorted((b / layout.SYSTEMS).glob("*/analysis/analysis.json")):
         r = load_json(p)
         if r.get("status") == "ok":
             rows.append(summary_row(r))
     if rows:
-        with open(b / "analysis_summary.csv", "w", newline="") as fh:
+        (b / layout.ANALYSIS_SUMMARY).parent.mkdir(parents=True, exist_ok=True)
+        with open(b / layout.ANALYSIS_SUMMARY, "w", newline="") as fh:
             w = csv.DictWriter(fh, SUMMARY_COLS)
             w.writeheader()
             w.writerows(rows)
@@ -467,7 +438,7 @@ def summary_row(r: dict) -> dict:
 def cmd_analyze(a: argparse.Namespace) -> dict:
     b: Path = a.batch_dir
     results = []
-    for stamp_p in sorted((b / "systems").glob("*/system.json")):
+    for stamp_p in sorted((b / layout.SYSTEMS).glob("*/system.json")):
         wd = stamp_p.parent
         if a.only and wd.name not in a.only:
             continue
@@ -489,7 +460,7 @@ def cmd_analyze(a: argparse.Namespace) -> dict:
         "skipped": [{"id": r["id"], "reason": r["reason"]} for r in results if r["status"] == "skipped"],
         "failed": failed,
         "flags": {r["id"]: r["flags"] for r in done if r.get("flags")},
-        "summary_csv": str(b / "analysis_summary.csv") if n_rows else None,
+        "summary_csv": str(b / layout.ANALYSIS_SUMMARY) if n_rows else None,
         "summary_rows": n_rows,
     }
 

@@ -40,7 +40,7 @@ def test_dry_run_plan_from_pdb_ids(tmp_path, capsys):
     assert cmds[("A", "gmxprep-fetch")]["command"].endswith("--ids 1XVP")
     assert cmds[("C", "gmxprep-extract")]["command"].endswith("--targets CID")
     assert "skip" not in cmds[("D", "gmxprep-relax")] and "skip-afdb" in cmds[("E", "gmxprep-afcompare")]["skip"]
-    assert "<B/manifest.generated.yaml>" in plan[6]["command"]  # derived after C/D
+    assert "<B/00-config/manifest.generated.yaml>" in plan[6]["command"]  # derived after C/D
     assert plan[9]["command"].endswith("--threads 8") and "skip" not in plan[9]
     assert "--analyze" in plan[10]["skip"]
 
@@ -70,7 +70,7 @@ def test_plan_errors_are_one_json_line(tmp_path, capsys):
 
 
 def _unit(b, pid, files, targets=("LIG",), chains=()):
-    d = b / "units" / pid
+    d = b / "03-units" / pid
     d.mkdir(parents=True)
     for f in files.values():
         (d / f).write_text("ATOM\n")
@@ -90,12 +90,12 @@ def test_generated_manifest_uses_relaxed_files_and_altloc_variants(tmp_path):
          "target_LIG_altB": "target_LIG_altB.pdb", "complex_LIG_altB": "complex_LIG_altB.pdb"},
     )  # fmt: skip
     _unit(b, "3CCC", {"enzyme": "enzyme.pdb", "target_P": "target_P.pdb", "complex_P": "complex_P.pdb"}, (), ("P",))
-    rel = b / "relaxed" / "1AAA"
+    rel = b / "04-relaxed" / "1AAA"
     rel.mkdir(parents=True)
     (rel / "relax.json").write_text(
         json.dumps({"files": {"enzyme.pdb": {"status": "ok"}, "complex_LIG.pdb": {"status": "ok"}}})
     )
-    rel2 = b / "relaxed" / "2BBB"
+    rel2 = b / "04-relaxed" / "2BBB"
     rel2.mkdir(parents=True)
     (rel2 / "relax.json").write_text(
         json.dumps({"files": {"complex_LIG_altB.pdb": {"status": "failed", "failure": "explosion"}}})
@@ -106,8 +106,8 @@ def test_generated_manifest_uses_relaxed_files_and_altloc_variants(tmp_path):
     man = yaml.safe_load(path.read_text())
 
     assert [e["id"] for e in man["enzymes"]] == ["1AAA", "2BBB", "3CCC"]
-    assert man["enzymes"][0]["pdb"] == str(b / "relaxed" / "1AAA" / "enzyme.pdb")
-    assert man["enzymes"][1]["pdb"] == str(b / "units" / "2BBB" / "enzyme.pdb")  # not relaxed: step-C file
+    assert man["enzymes"][0]["pdb"] == str(b / "04-relaxed" / "1AAA" / "enzyme.pdb")
+    assert man["enzymes"][1]["pdb"] == str(b / "03-units" / "2BBB" / "enzyme.pdb")  # not relaxed: step-C file
     cx = {(c["enzyme"], c["target"], c.get("variant")) for c in man["complexes"]}
     assert cx == {("1AAA", "LIG", None), ("2BBB", "LIG", "altA"), ("3CCC", "chains_P", None)}
     assert any("altB" in n and "explosion" in n for n in notes)  # failed relax: never used
@@ -129,7 +129,7 @@ def test_user_named_targets_are_kept(tmp_path):
     _unit(b, "1AAA", {"enzyme": "enzyme.pdb", "target_CID": "target_CID.pdb", "complex_CID": "complex_CID.pdb"})
     raw = {"targets": [{"id": "citco", "kind": "ligand", "resname": "CID", "sdf": "citco.sdf"}]}
     man = yaml.safe_load(pipeline.derive_manifest(raw, tmp_path, b)[0].read_text())
-    assert man["complexes"] == [{"enzyme": "1AAA", "target": "citco", "pdb": str(b / "units/1AAA/complex_CID.pdb")}]
+    assert man["complexes"] == [{"enzyme": "1AAA", "target": "citco", "pdb": str(b / "03-units/1AAA/complex_CID.pdb")}]
     assert man["targets"][0]["sdf"] == str((tmp_path / "citco.sdf").resolve()) and "pdb" not in man["targets"][0]
 
 
@@ -152,7 +152,7 @@ def test_execute_fails_fast_and_keep_going(tmp_path, capsys, monkeypatch):
     final = json.loads(out[-1])
     assert calls == ["lock", "build"] and final["failed_stage"] == "F"
     assert "F verify: not run" in final["stages"] and "G run: not run" in final["stages"]
-    rep = json.loads((tmp_path / "B" / "pipeline.json").read_text())
+    rep = json.loads((tmp_path / "B" / "00-config" / "pipeline.json").read_text())
     assert rep["steps"][1]["status"] == "skipped"  # A: no steps.fetch
 
     calls.clear()

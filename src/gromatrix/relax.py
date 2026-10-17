@@ -46,6 +46,7 @@ from pathlib import Path
 
 import numpy as np
 
+from . import layout
 from .forcefields import ForcefieldMismatch, acquire_lock, lock_path, resolve
 from .pdbio import ION_RES, PROTEIN_RES, Atom, read_pdb, write_pdb
 
@@ -260,8 +261,8 @@ def main(argv: list[str] | None = None) -> int:
         prog="gmxprep-relax", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--batch-dir", type=Path, required=True)
-    ap.add_argument("--in", dest="indir", default="units")
-    ap.add_argument("--out", default="relaxed")
+    ap.add_argument("--in", dest="indir", default=layout.UNITS)
+    ap.add_argument("--out", default=layout.RELAXED)
     ap.add_argument("--ids", nargs="+")
     ap.add_argument("--files", nargs="+", default=["enzyme.pdb", "complex_*.pdb", "target_*.pdb"])
     ap.add_argument("--forcefield", help="amber|charmm; default: the batch lock's family (amber if unlocked)")
