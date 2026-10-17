@@ -43,6 +43,6 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
-    except Exception as e:  # noqa: BLE001 - logging must never fail the tool call
+    except Exception as e:
         print(f"log_event: {e}", file=sys.stderr)
     sys.exit(0)
