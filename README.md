@@ -340,7 +340,9 @@ JSON artefacts into `09-reports/README.md` with tables and figures for steps B�
 
 ```bash
 pixi run lint        # ruff check + format check (tiny env, no science stack)
-pixi run fmt         # auto-format and auto-fix
+pixi run check       # lint + syntax (ruff), plugin validation, fast tests: what CI checks
+pixi run fix         # auto-fix what ruff can (safe fixes + formatting), then run check again
+pixi run hooks       # install the pre-commit / pre-push git hooks
 pixi run test-all    # what CI runs; also: pixi run -e py310 test-all / -e py313
 pixi run -e skills check-plugin     # validate plugin.json, marketplace.json, skills/ and agents/
 pixi shell -e md     # adds GROMACS / acpype / Open Babel for real step F–H runs
@@ -348,8 +350,8 @@ pixi shell -e md     # adds GROMACS / acpype / Open Babel for real step F–H ru
 
 Optional but recommended: [pre-commit](https://pre-commit.com) runs the Ruff check (and the plugin
 validation when plugin files change) on every commit, and the offline tests on every push, so failures
-show up before CI does. `pipx install pre-commit && pre-commit install` once per clone. The hooks only
-check, they never rewrite your files.
+show up before CI does. `pixi run hooks` installs it once per clone. The hooks only check, they never
+rewrite your files.
 
 CI (`.github/workflows/ci.yml`) has three jobs:
 - **lint:** Ruff.

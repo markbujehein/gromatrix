@@ -1,8 +1,7 @@
 # Local checks before code leaves your machine; CI runs the same lint and tests as the safety net.
-#   one-off setup:  pipx install pre-commit   (or: mise use -g pre-commit)
-#                   pre-commit install        (installs the commit and push hooks below)
+#   one-off setup:  pixi run hooks   (installs the commit and push hooks below; pre-commit lives in the lint env)
 # Commit: fast checks only (seconds). Push: the offline test suite. Nothing here edits your files;
-# when ruff complains, fix it by hand or run `pixi run -e lint fmt`, then commit again.
+# when ruff complains, fix it by hand or run `pixi run fix`, then commit again.
 default_install_hook_types: [pre-commit, pre-push]
 minimum_pre_commit_version: "3.0.0"
 

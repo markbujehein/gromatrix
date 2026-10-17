@@ -1,7 +1,10 @@
 # Pixi workspace for gromatrix: the single source of truth for environments.
 #   pixi run test        fast unit tests (default env, Python 3.12)
 #   pixi run test-all    full suite incl. the offline end-to-end regression, with coverage
+#   pixi run check       everything CI checks: lint + syntax (ruff), plugin validation, fast tests
+#   pixi run fix         auto-fix what ruff can (imports, formatting); then run check again
 #   pixi run lint        ruff check + ruff format --check (tiny env, no science stack)
+#   pixi run hooks       install the pre-commit / pre-push git hooks (.pre-commit-config.yaml)
 #   pixi run -e md ...   adds GROMACS / AmberTools / Open Babel for real step F-H runs
 [workspace]
 name = "gromatrix"
@@ -24,6 +27,24 @@ rdkit = ">=2023.09"
 [pypi-dependencies]
 gromatrix = { path = ".", editable = true }
 
+# ---------------------------------------------------------------- workspace tasks
+# These span environments (ruff lives in `lint`, the plugin check in `skills`, pytest in `default`).
+[tasks.check]
+description = "lint + syntax (ruff), plugin validation, fast tests: what CI checks, read-only"
+depends-on = [
+  { task = "lint", environment = "lint" },
+  { task = "check-plugin", environment = "skills" },
+  { task = "test", environment = "default" },
+]
+
+[tasks.fix]
+description = "auto-fix what ruff can (safe fixes + formatting); run `pixi run check` afterwards"
+depends-on = [{ task = "ruff-fix", environment = "lint" }]
+
+[tasks.hooks]
+description = "install the pre-commit and pre-push git hooks"
+depends-on = [{ task = "install-hooks", environment = "lint" }]
+
 # ---------------------------------------------------------------- features
 [feature.test.dependencies]
 pytest = ">=8"
@@ -35,12 +56,14 @@ test-all = { cmd = "pytest -q --cov=gromatrix --cov-report=term-missing:skip-cov
 
 [feature.lint.dependencies]
 ruff = ">=0.6"
+pre-commit = ">=3"
 
 [feature.lint.tasks]
 lint = { depends-on = ["ruff-check", "ruff-format-check"], description = "ruff lint + format check" }
 ruff-check = "ruff check src tests scripts benchmarks"
 ruff-format-check = "ruff format --check src tests scripts benchmarks"
-fmt = { cmd = "ruff format src tests scripts benchmarks && ruff check --fix src tests scripts benchmarks", description = "auto-format and auto-fix" }
+ruff-fix = { cmd = "ruff check --fix src tests scripts benchmarks && ruff format src tests scripts benchmarks", description = "safe auto-fixes, then format (what `pixi run fix` runs)" }
+install-hooks = { cmd = "pre-commit install", description = "install the git hooks from .pre-commit-config.yaml" }
 
 # Step H (trajectory analysis): MDAnalysis + headless matplotlib. In the test envs so CI
 # exercises the analysis end to end on a synthetic trajectory.
