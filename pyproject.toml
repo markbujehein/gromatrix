@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "gromatrix"
 version = "0.2.0"
 description = "PDB -> GROMACS enzyme x target simulation matrix with a batch-locked forcefield"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Mark Sørensen" }]
@@ -45,7 +45,7 @@ addopts = "--disable-socket --allow-unix-socket --timeout=300"
 
 [tool.ruff]
 line-length = 120
-target-version = "py310"
+target-version = "py311"
 src = ["src", "tests"]
 
 [tool.ruff.lint]

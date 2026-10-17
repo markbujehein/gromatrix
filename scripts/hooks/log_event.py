@@ -24,7 +24,7 @@ def main() -> None:
         b = batch_dir(toks, cwd) or Path(cwd)
         if not (b / "00-config").is_dir():  # never create a batch folder as a side effect
             return
-        rec: dict = {"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"), "command": cmd[:500]}
+        rec: dict = {"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"), "command": cmd[:500]}  # noqa: UP017 (hooks run on the user's system python3, which may predate 3.11)
         resp = data.get("tool_response")
         resp = resp if isinstance(resp, dict) else {}
         code = resp.get("exit_code", resp.get("exitCode"))

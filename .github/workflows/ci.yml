@@ -62,8 +62,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # PRs: the canonical Python only. Pushes to main/dev: also the 3.10/3.13 edges.
-        environment: ${{ fromJSON(github.event_name == 'pull_request' && '["default"]' || '["default", "py310", "py313"]') }}
+        # PRs: the canonical Python only. Pushes to main/dev: also the 3.11/3.13 edges.
+        environment: ${{ fromJSON(github.event_name == 'pull_request' && '["default"]' || '["default", "py311", "py313"]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
