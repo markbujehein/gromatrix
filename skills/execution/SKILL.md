@@ -47,6 +47,11 @@ gromatrix-run --batch-dir B --slurm --time 24:00:00 --threads 16 --gpus-per-task
   "progress_pct":45,"overall_pct":61}`. The last line is the summary `{"ok":…}`. In background mode,
   read the log, or run `gromatrix-status`, which reads each `06-systems/<id>/run.json`.
 
+- **Following a run.** `gromatrix-watch --batch-dir B [--interval 30]` prints one JSON line per MD
+  phase change per system (`{"system","phase","status","run"}`) and exits when every system is
+  finished (exit 0 all done, 1 any failed or interrupted). Run it as the one background wait instead of
+  polling; `--once` prints the current state and exits. It reads `run.json` and the phase logs only.
+
 ## Resume
 
 Run the same command again. Each phase is either
