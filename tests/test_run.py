@@ -262,3 +262,12 @@ def test_corrupt_run_json_does_not_block(batch):
 def test_abbreviated_flags_are_rejected():
     with pytest.raises(SystemExit):
         runmod.main(["--batch-dir", "x", "--backg"])  # would otherwise re-spawn itself in background
+
+
+def test_run_result_reports_what_was_applied(batch, capsys):
+    _system(batch)
+    assert _run(batch) == 0
+    last = json.loads(capsys.readouterr().out.splitlines()[-1])
+    assert list(last)[:2] == ["ok", "applied"]
+    assert last["applied"]["options"]["deffnm"] == {"passed": "md", "used": "md", "changed": False}
+    assert last["applied"]["facts"]["systems"] == {"S1": "done"}

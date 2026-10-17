@@ -515,6 +515,22 @@ def cmd_plan(a) -> dict:
     }
 
 
+def build_facts(stamps: dict[str, dict]) -> dict:
+    """Per-system figures from the system.json stamps (only keys the stamp really holds)."""
+    facts: dict[str, dict] = {"atoms": {}, "solute_charge": {}, "ions": {}}
+    for sid, st in stamps.items():
+        if "atoms" in st:
+            facts["atoms"][sid] = st["atoms"]
+        if "solute_charge" in st:
+            facts["solute_charge"][sid] = st["solute_charge"]
+        if "ions" in st.get("components", {}):
+            facts["ions"][sid] = len(st["components"]["ions"])
+    return {k: v for k, v in facts.items() if v}
+
+
+BUILD_OPTIONS = ("box", "pad", "conc", "temp", "md_ns", "maxwarn")
+
+
 def cmd_build(a) -> dict:
     m = load_manifest(a.manifest, a.allow_incomplete)
     if a.forcefield and m.forcefield and resolve(a.forcefield).key != resolve(m.forcefield).key:
@@ -522,12 +538,13 @@ def cmd_build(a) -> dict:
     ff = acquire_lock(a.batch_dir, a.forcefield or m.forcefield)
     ff_dir = locate_ff_dir(ff.gmx_name, a.gmx, [a.batch_dir.resolve()])
     ctx = Ctx(a.batch_dir.resolve(), ff, ff_dir, a.gmx, a, m.ligands)
-    results = []
+    results, stamps = [], {}
     for sd in m.systems:
         if a.only and sd.id not in a.only:
             continue
         try:
             st = build_system(sd, ctx)
+            stamps[sd.id] = st
             results.append({"id": sd.id, "role": sd.role, "status": "ok", "warnings": st["warnings"]})
         except ForcefieldMismatch:
             raise
@@ -539,8 +556,10 @@ def cmd_build(a) -> dict:
     (ctx.batch / layout.MATRIX).write_text(
         json.dumps({"forcefield": ff.identity(), "missing_pairs": m.missing_pairs, "systems": results}, indent=2)
     )
+    opts = {k: getattr(a, k) for k in BUILD_OPTIONS} | {"forcefield": a.forcefield}
     return {
         "ok": all(r["status"] == "ok" for r in results),
+        "applied": result.receipt(opts, opts | {"forcefield": ff.key}, {"forcefield": ff.key, **build_facts(stamps)}),
         "forcefield": ff.key,
         "built": sum(r["status"] == "ok" for r in results),
         "failed": [r for r in results if r["status"] != "ok"],
