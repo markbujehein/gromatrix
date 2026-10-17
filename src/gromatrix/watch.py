@@ -49,10 +49,11 @@ def system_state(wd: Path) -> tuple[str, dict[str, str]]:
     phases = {}
     for name in PHASE_NAMES:
         entry = (st.get("phases") or {}).get(name)
+        log = wd / f"{deffnm if name == 'md' else name}.log"
         if entry and entry.get("status"):
             phases[name] = entry["status"]
-        elif (wd / f"{deffnm if name == 'md' else name}.log").exists() and run != "pending":
-            scan = checks.scan_md_log(wd / f"{deffnm if name == 'md' else name}.log")
+        elif log.exists() and run != "pending":
+            scan = checks.scan_md_log(log)
             phases[name] = "failed" if scan["fatal"] else ("done" if scan["finished"] else "running")
     return run, phases
 
