@@ -16,6 +16,8 @@
   a read guard (trajectories, energy files, checkpoints, whole logs), a SubagentStop payload check,
   `gromatrix-status` at SessionStart, and `00-config/events.jsonl`. A second layer; CLI gates stay
   authoritative. `scripts/check_plugin.py` validates `hooks.json`.
+- **Claude Code GitHub Action**: `claude-review.yml` (PR review, same-repository PRs only) and
+  `claude.yml` (`@claude` mentions, read-only); SHA-pinned, least-privilege permissions.
 - **Codecov**: CI uploads `coverage.xml` (`codecov.yml`, non-blocking); the README badge points to it and
   replaces the `badges`-branch job.
 - **`gromatrix-watch`**: one line per MD phase change per system; exits when all systems are finished.

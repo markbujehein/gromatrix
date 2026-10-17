@@ -356,6 +356,12 @@ The tests job uploads `coverage.xml` to [Codecov](https://codecov.io/gh/markbuje
 (`codecov.yml`: project target relative to the base commit with a 2% allowance; the patch check is
 informational). The upload needs the `CODECOV_TOKEN` repository secret and never fails CI.
 
+AI review (optional, needs a secret): `claude-review.yml` reviews same-repository pull requests and
+`claude.yml` answers `@claude` mentions, both through
+[anthropics/claude-code-action](https://github.com/anthropics/claude-code-action). They need the
+`ANTHROPIC_API_KEY` repository secret and the Claude GitHub app; without them the jobs fail and nothing
+else is affected. Fork and Dependabot PRs are skipped (no secrets). The mention workflow is read-only.
+
 Hardening:
 - Actions are pinned to commit SHAs (kept current by Dependabot).
 - Permissions default to `contents: read`.
