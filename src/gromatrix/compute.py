@@ -31,8 +31,17 @@ from pathlib import Path
 from . import layout
 
 MODES = ("local", "slurm", "remote")
-DEFAULTS = {"mode": "local", "threads": None, "gpu_id": None, "maxh": None,
-            "time": "24:00:00", "partition": None, "account": None, "gpus_per_task": None, "max_parallel": None}
+DEFAULTS = {
+    "mode": "local",
+    "threads": None,
+    "gpu_id": None,
+    "maxh": None,
+    "time": "24:00:00",
+    "partition": None,
+    "account": None,
+    "gpus_per_task": None,
+    "max_parallel": None,
+}
 
 
 def load(batch_dir: Path) -> dict | None:
@@ -63,16 +72,21 @@ def run_args(cfg: dict) -> list[str]:
             a += ["--maxh", str(cfg["maxh"])]
         return a + ["--background"]
     a += ["--slurm", "--time", cfg.get("time") or DEFAULTS["time"]]
-    for flag, key in (("--partition", "partition"), ("--account", "account"),
-                      ("--gpus-per-task", "gpus_per_task"), ("--max-parallel", "max_parallel")):
+    for flag, key in (
+        ("--partition", "partition"),
+        ("--account", "account"),
+        ("--gpus-per-task", "gpus_per_task"),
+        ("--max-parallel", "max_parallel"),
+    ):
         if cfg.get(key) is not None:
             a += [flag, str(cfg[key])]
     return a
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="gromatrix-compute", description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        prog="gromatrix-compute", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--batch-dir", type=Path, required=True)
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name in ("detect", "show", "run-args"):

@@ -17,6 +17,12 @@ gromatrix-compute --batch-dir B run-args    # exact flags for gromatrix-run
 | `slurm` | the Slurm array script is written here and submitted with `sbatch` from this machine | this machine is a cluster login node |
 | `remote` | the array script is written, nothing is submitted; the batch is copied elsewhere | the cluster is a separate machine |
 
+## Following a local run
+`gromatrix-watch --batch-dir B --interval 30` prints one JSON line per MD phase change per system and
+exits when all systems are finished (0 = all done, 1 = a failure or interruption). Run it in the
+background as the single wait. For `slurm` and `remote` the batch must be reachable from where you
+run it (on a cluster, run it there); it never submits or cancels anything.
+
 ## Cost guide (rule of thumb, measure on your machine)
 A 65k-atom system on 12 CPU cores does very roughly 10 ns/day, so 100 ns takes about 10 days. The
 100 ps NVT + 100 ps NPT + 0.1 ns production protocol of a smoke-grade run takes about 35 minutes.

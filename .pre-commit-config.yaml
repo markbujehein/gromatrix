@@ -1,0 +1,33 @@
+# Local checks before code leaves your machine; CI runs the same lint and tests as the safety net.
+#   one-off setup:  pixi run hooks   (installs the commit and push hooks below; pre-commit lives in the lint env)
+# Commit: fast checks only (seconds). Push: the offline test suite. Nothing here edits your files;
+# when ruff complains, fix it by hand or run `pixi run fix`, then commit again.
+default_install_hook_types: [pre-commit, pre-push]
+minimum_pre_commit_version: "3.0.0"
+
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff lint + format check
+        entry: pixi run -e lint lint
+        language: system
+        pass_filenames: false
+        types_or: [python]
+        stages: [pre-commit]
+
+      - id: plugin
+        name: validate plugin (manifests, skills, agents, hooks)
+        entry: pixi run -e skills check-plugin
+        language: system
+        pass_filenames: false
+        files: ^(\.claude-plugin/|skills/|agents/|hooks/|references/|scripts/)
+        stages: [pre-commit]
+
+      - id: tests
+        name: offline tests (not slow)
+        entry: pixi run -e md pytest -q -m "not slow" tests
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
