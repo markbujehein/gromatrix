@@ -31,9 +31,11 @@ from pathlib import Path
 
 from . import layout
 
-ORCHESTRATOR = "gromatrix"
-STRUCTURE_SKILL, VALIDATE_SKILL, GMX_SKILL = "gromatrix-structure-prep", "gromatrix-validate", "gromatrix-gmx-builder"
-RUN_SKILL, ANALYSIS_SKILL = "gromatrix-execution", "gromatrix-analysis"
+# Plugin skill and agent names (the plugin is called `gromatrix`, so components are `gromatrix:<name>`).
+ORCHESTRATOR = "gromatrix:start"
+STRUCTURE_SKILL, VALIDATE_SKILL, GMX_SKILL = "gromatrix:structure-prep", "gromatrix:validate", "gromatrix:gmx-builder"
+RUN_SKILL, ANALYSIS_SKILL = "gromatrix:execution", "gromatrix:analysis"
+MD_RUNNER, MD_ANALYST = "gromatrix:md-runner", "gromatrix:md-analyst"  # subagents for the noisy steps G and H
 
 
 def _json(path: Path) -> dict | None:
@@ -93,10 +95,11 @@ def batch_status(b: Path) -> dict:
         "ok": True,
         "batch": str(b),
         "forcefield": lock.get("key") if lock else None,
+        "compute": _json(b / layout.COMPUTE),
         "steps": _steps(per_id, sys_summary),
         "structures": per_id,
         "systems": sys_summary,
-        "next": _next(b, lock, per_id, sys_summary),
+        "next": _next(b, lock, per_id, sys_summary, _json(b / layout.COMPUTE)),
     }
 
 
@@ -134,7 +137,7 @@ def _steps(per_id: dict, systems: dict) -> dict:
     return out
 
 
-def _next(b: Path, lock: dict | None, per_id: dict, systems: dict) -> dict:
+def _next(b: Path, lock: dict | None, per_id: dict, systems: dict, compute: dict | None = None) -> dict:
     if lock is None:
         return {
             "skill": ORCHESTRATOR,
@@ -145,7 +148,7 @@ def _next(b: Path, lock: dict | None, per_id: dict, systems: dict) -> dict:
         return {"skill": STRUCTURE_SKILL, "command": f"gmxprep-fetch --batch-dir {b} --ids <IDs>", "why": "empty batch"}
     todo = lambda key: sorted(k for k, v in per_id.items() if not v.get(key))  # noqa: E731
     if systems["built"]:
-        return _next_md(b, systems)
+        return _next_md(b, systems, compute)
     if todo("fixed"):
         return {
             "skill": STRUCTURE_SKILL,
@@ -176,11 +179,11 @@ def _next(b: Path, lock: dict | None, per_id: dict, systems: dict) -> dict:
             "command": f"gmxprep-gmx build --batch-dir {b} --manifest <manifest.yaml>",
             "why": "structures validated; no GROMACS systems built yet",
         }
-    return _next_md(b, systems)
+    return _next_md(b, systems, compute)
 
 
-def _next_md(b: Path, systems: dict) -> dict:
-    """F (smoke) -> G -> H, once systems exist."""
+def _next_md(b: Path, systems: dict, compute: dict | None = None) -> dict:
+    """F (smoke) -> G -> H, once systems exist. G and H name the subagent that must run them."""
     runs = systems["run"]
     if systems["smoke_ok"] + systems["smoke_failed"] < systems["built"] and not systems["run_done"]:
         return {"skill": GMX_SKILL, "command": f"gmxprep-gmx smoke --batch-dir {b}", "why": "systems not smoke-tested"}
@@ -189,6 +192,7 @@ def _next_md(b: Path, systems: dict) -> dict:
     if runs.get("failed"):
         return {
             "skill": RUN_SKILL,
+            "agent": MD_RUNNER,
             "command": f"gmxprep-run --batch-dir {b} --only {' '.join(runs['failed'][:5])}",
             "why": f"MD failed for {runs['failed'][:5]}: read 06-systems/<id>/run.json, fix, rerun",
         }
@@ -196,23 +200,35 @@ def _next_md(b: Path, systems: dict) -> dict:
         if runs.get("running"):
             return {
                 "skill": RUN_SKILL,
+                "agent": MD_RUNNER,
                 "command": f"gmxprep-status --batch-dir {b}",
                 "why": f"MD running for {runs['running'][:5]}; check again later",
             }
+        if compute is None and not runs:  # where MD runs is the user's call; ask once, then it is stored
+            return {
+                "skill": ORCHESTRATOR,
+                "command": f"gromatrix-compute --batch-dir {b} detect, then set --mode <local|slurm|remote>",
+                "why": "systems ready; choose where the MD runs (this machine, Slurm, or another machine)",
+            }
+        from .compute import run_args
+
         return {
             "skill": RUN_SKILL,
-            "command": f"gmxprep-run --batch-dir {b}",
+            "agent": MD_RUNNER,
+            "command": f"gmxprep-run --batch-dir {b} " + " ".join(run_args(compute) if compute else []),
             "why": "systems ready; MD not run or not finished (gmxprep-run resumes from checkpoints)",
         }
     if systems["analysis_failed"]:
         return {
             "skill": ANALYSIS_SKILL,
+            "agent": MD_ANALYST,
             "command": f"gmxprep-analyze --batch-dir {b} --only {' '.join(systems['analysis_failed'][:5])}",
             "why": f"analysis failed for {systems['analysis_failed'][:5]}",
         }
     if systems["analysed"] < systems["run_done"]:
         return {
             "skill": ANALYSIS_SKILL,
+            "agent": MD_ANALYST,
             "command": f"gmxprep-analyze --batch-dir {b}",
             "why": "trajectories not analysed yet",
         }
