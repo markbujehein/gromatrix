@@ -2,11 +2,9 @@
 
 <p>
   <a href="https://github.com/markbujehein/gromatrix/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/markbujehein/gromatrix/actions/workflows/ci.yml/badge.svg?branch=main"></a>
-  <a href="https://github.com/markbujehein/gromatrix/tree/badges"><img alt="coverage" src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/markbujehein/gromatrix/badges/coverage.json"></a>
-  <a href="CHANGELOG.md"><img alt="version" src="https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmarkbujehein%2Fgromatrix%2Fmain%2Fpyproject.toml&query=%24.project.version&label=version&color=orange"></a>
+  <a href="https://codecov.io/gh/markbujehein/gromatrix"><img alt="coverage" src="https://codecov.io/gh/markbujehein/gromatrix/graph/badge.svg"></a>
+  <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-green"></a>
   <a href="pixi.toml"><img alt="python" src="https://img.shields.io/badge/python-3.10%20%7C%203.12%20%7C%203.13-blue"></a>
-  <a href="https://pixi.sh"><img alt="pixi" src="https://img.shields.io/badge/env-pixi-yellow"></a>
-  <a href="https://github.com/astral-sh/ruff"><img alt="ruff" src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json"></a>
 </p>
 
 **From PDB IDs to a comparable set of GROMACS simulations, with one forcefield and with every
@@ -348,12 +346,15 @@ pixi run -e skills check-plugin     # validate plugin.json, marketplace.json, sk
 pixi shell -e md     # adds GROMACS / acpype / Open Babel for real step F–H runs
 ```
 
-CI (`.github/workflows/ci.yml`) has four jobs:
+CI (`.github/workflows/ci.yml`) has three jobs:
 - **lint:** Ruff.
 - **tests:** with coverage, on Python 3.12 for pull requests, and on 3.10 / 3.12 / 3.13 for
   pushes.
-- **plugin:** validates the plugin manifest, skills and agents.
-- **coverage badge:** published from `main` to the `badges` branch.
+- **plugin:** validates the plugin manifest, skills, agents and hooks.
+
+The tests job uploads `coverage.xml` to [Codecov](https://codecov.io/gh/markbujehein/gromatrix)
+(`codecov.yml`: project target relative to the base commit with a 2% allowance; the patch check is
+informational). The upload needs the `CODECOV_TOKEN` repository secret and never fails CI.
 
 Hardening:
 - Actions are pinned to commit SHAs (kept current by Dependabot).

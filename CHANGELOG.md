@@ -16,6 +16,8 @@
   a read guard (trajectories, energy files, checkpoints, whole logs), a SubagentStop payload check,
   `gromatrix-status` at SessionStart, and `00-config/events.jsonl`. A second layer; CLI gates stay
   authoritative. `scripts/check_plugin.py` validates `hooks.json`.
+- **Codecov**: CI uploads `coverage.xml` (`codecov.yml`, non-blocking); the README badge points to it and
+  replaces the `badges`-branch job.
 - **`gromatrix-watch`**: one line per MD phase change per system; exits when all systems are finished.
 - **`gromatrix-compute`**: stores where MD runs (local, Slurm, remote) in `00-config/compute.json`;
   CPU-only is fine; the orchestrator asks once before step G.
