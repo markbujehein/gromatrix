@@ -1,19 +1,19 @@
 ---
 name: validate
-description: "Checks that extracted structures are physically sane before MD: two-stage restrained OpenMM relaxation with failure gates, then comparison of each protein chain with its AlphaFold DB prediction (steps D-E). Use this skill ONLY when gmxprep-status shows steps A-C done and D or E next, or the user asks whether prepared structures are sane or how they compare with AlphaFold. Covers gmxprep-relax (explosion, distortion, chain-break, clash and pocket-collapse gates) and gmxprep-afcompare (RMSD, TM-score, Calpha-lDDT, flags). Not for fetching structures, GROMACS builds or MD."
+description: "Checks that extracted structures are physically sane before MD: two-stage restrained OpenMM relaxation with failure gates, then comparison of each protein chain with its AlphaFold DB prediction (steps D-E). Use this skill ONLY when gromatrix-status shows steps A-C done and D or E next, or the user asks whether prepared structures are sane or how they compare with AlphaFold. Covers gromatrix-relax (explosion, distortion, chain-break, clash and pocket-collapse gates) and gromatrix-afcompare (RMSD, TM-score, Calpha-lDDT, flags). Not for fetching structures, GROMACS builds or MD."
 ---
 
 # gromatrix: validation (steps D–E)
 
 Shared biophysical rules: `${CLAUDE_PLUGIN_ROOT}/references/domain-rules.md`.
 
-Commands: `gmxprep-relax`, `gmxprep-afcompare`. Full flags are in `references/cli.md`. Failure
+Commands: `gromatrix-relax`, `gromatrix-afcompare`. Full flags are in `references/cli.md`. Failure
 labels and flags are explained in `references/troubleshooting.md`.
 
 ## Before you start
 
 ```bash
-gmxprep-status --batch-dir B     # needs 03-units/<ID>/ from gromatrix:structure-prep, and the forcefield lock
+gromatrix-status --batch-dir B     # needs 03-units/<ID>/ from gromatrix:structure-prep, and the forcefield lock
 ```
 
 Step D reads the forcefield **family** from the lock, so it relaxes with amber14 or charmm36 to
@@ -23,11 +23,11 @@ first. An explicit `--forcefield` that disagrees with the lock is refused.
 ## Run
 
 ```bash
-gmxprep-relax     --batch-dir B          # enzyme.pdb, complex_*.pdb, target_*.pdb; ligand-only files are skipped
-gmxprep-afcompare --batch-dir B          # every protein chain ≥ 30 residues vs its AFDB model
+gromatrix-relax     --batch-dir B          # enzyme.pdb, complex_*.pdb, target_*.pdb; ligand-only files are skipped
+gromatrix-afcompare --batch-dir B          # every protein chain ≥ 30 residues vs its AFDB model
 ```
 
-`gmxprep-relax` picks its solvent model itself: GBn2 implicit solvent on a GPU, a
+`gromatrix-relax` picks its solvent model itself: GBn2 implicit solvent on a GPU, a
 reaction-field cutoff on CPU (about 25× faster). Expect about 10–15 s per file on a 4-core CPU.
 
 ## Read the results
@@ -43,7 +43,7 @@ reaction-field cutoff on CPU (about 25× faster). Expect about 10–15 s per fil
 
 ## Hand-off
 
-Done when `gmxprep-status` shows `relax` and `af` for every entry. Tell the orchestrator:
+Done when `gromatrix-status` shows `relax` and `af` for every entry. Tell the orchestrator:
 - which files passed. The gmx builder uses `04-relaxed/<ID>/<file>` for those.
 - which files failed. They stay as `*.failed.pdb` and must not go into the manifest.
 - the AlphaFold flags, for the final report.

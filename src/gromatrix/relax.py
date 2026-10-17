@@ -1,6 +1,6 @@
 """[D] OpenMM structural-integrity relaxation of the extracted matrix files.
 
-    gmxprep-relax --batch-dir B [--in units] [--out relaxed] [--ids 1ABC ...]
+    gromatrix-relax --batch-dir B [--in units] [--out relaxed] [--ids 1ABC ...]
                   [--files enzyme.pdb complex_*.pdb target_*.pdb] [--forcefield amber|charmm]
                   [--solvent auto|gbn2|rf] [--restraint-k 1000] [--max-iter 2000] [--free-iter 1000]
                   [--max-rmsd 2.5] [--max-drop 100] [--pocket-cutoff 5.0] [--platform auto|CPU|CUDA|OpenCL]
@@ -258,7 +258,7 @@ def _family(a) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
-        prog="gmxprep-relax", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+        prog="gromatrix-relax", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--batch-dir", type=Path, required=True)
     ap.add_argument("--in", dest="indir", default=layout.UNITS)

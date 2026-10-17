@@ -16,12 +16,12 @@ when the batch is at that stage. Shared reference material (read on demand, not 
 Begin every session, and every stage, with:
 
 ```bash
-gmxprep-status --batch-dir B
+gromatrix-status --batch-dir B
 ```
 
 It prints one JSON line: `forcefield`, `compute`, `steps` (`A…H`: done / partial / pending / n/a),
 `structures`, `systems`, and **`next`** = `{skill, agent?, command, why}`. Follow `next`: load the
-named skill and run its command; if `next.agent` is set, delegate (below). Run `gmxprep-status`
+named skill and run its command; if `next.agent` is set, delegate (below). Run `gromatrix-status`
 again after each stage. The files are the contract; no skill keeps state in conversation memory.
 
 The batch folders are numbered in pipeline order: `00-config`, `01-raw` … `04-relaxed`,
@@ -32,7 +32,7 @@ The batch folders are numbered in pipeline order: `00-config`, `01-raw` … `04-
 1. **Batch directory.** One batch is one comparison matrix. Ask where; never pick a generic
    folder name like `work`.
 2. **Forcefield.** Default `amber` (amber99sb-ildn + GAFF2/AM1-BCC + TIP3P); `charmm` (CHARMM36m +
-   CGenFF) if the user asks. Lock it before step D: `gmxprep-gmx lock --batch-dir B --forcefield amber`.
+   CGenFF) if the user asks. Lock it before step D: `gromatrix-gmx lock --batch-dir B --forcefield amber`.
    The lock is permanent: another forcefield needs a new batch directory.
 3. **Targets and cofactors.** Which HET residue (or protein chain) is the target, which cofactors
    stay bound, and each ligand's protonation state (SMILES with charges, or an SDF with explicit H).
@@ -61,8 +61,8 @@ invoked as `gromatrix:structure-prep`, `gromatrix:validate`, `gromatrix:gmx-buil
 
 ## Steps G and H run in subagents, never in this context
 
-**The rule:** never run `gmxprep-run` (G) or `gmxprep-analyze` (H) here, including through
-`gmxprep-pipeline --run-md` or `--analyze`. They produce thousands of log lines and run for hours;
+**The rule:** never run `gromatrix-run` (G) or `gromatrix-analyze` (H) here, including through
+`gromatrix-pipeline --run-md` or `--analyze`. They produce thousands of log lines and run for hours;
 the subagent absorbs that and returns one small JSON payload.
 
 Spawn the agent named in `next.agent`, in the background, with the Agent tool:
@@ -83,8 +83,8 @@ one-line reason, LINCS warning counts, and the path of the evidence. If `ok` is 
 reason verbatim and load `gromatrix:execution` (or `gromatrix:analysis`) to decide the fix. Only
 open a log yourself for the one failing system, and read just its tail.
 
-Where the agent tool is unavailable (some chat clients): start G with `gmxprep-run … --background`
-(flags from `gromatrix-compute run-args`) and check `gmxprep-status` at long intervals; never tail logs.
+Where the agent tool is unavailable (some chat clients): start G with `gromatrix-run … --background`
+(flags from `gromatrix-compute run-args`) and check `gromatrix-status` at long intervals; never tail logs.
 
 ## One-command mode
 
@@ -92,8 +92,8 @@ For unattended preparation, write a pipeline manifest from `references/pipeline-
 preview it first:
 
 ```bash
-gmxprep-pipeline --manifest M --dry-run     # exact commands, nothing runs
-gmxprep-pipeline --manifest M --to F        # A–F; stops at the first failed step
+gromatrix-pipeline --manifest M --dry-run     # exact commands, nothing runs
+gromatrix-pipeline --manifest M --to F        # A–F; stops at the first failed step
 ```
 
 It runs the same stage commands, so every gate still applies. It ends by writing
@@ -109,7 +109,7 @@ Flags: `--skip-relax`, `--skip-afdb`, `--skip-smoke`, `--keep-going`.
 - A hard stop (forcefield mismatch, incomplete matrix, metal-containing ligand, high CGenFF penalty,
   failed relax gate) is a finding to report, not something to bypass with a flag.
 - Don't invent data. Results come from the files; if a step wasn't run, say so.
-- If `gmxprep-status` is not found, the package isn't installed where commands run. Inside a clone,
+- If `gromatrix-status` is not found, the package isn't installed where commands run. Inside a clone,
   `pixi install -e md` then `pixi run -e md …`. Elsewhere:
   `conda create -n gromatrix -c conda-forge python=3.12 openmm pdbfixer rdkit biopython scipy pyyaml matplotlib mdanalysis gromacs acpype openbabel`,
   then `pip install "gromatrix @ git+https://github.com/markbujehein/gromatrix"`. Never improvise a replacement script.
@@ -121,4 +121,4 @@ format of `${CLAUDE_PLUGIN_ROOT}/examples/analysis_summary_example.md`: forcefie
 a table, the sampling statement, and every warning and flag verbatim (C unit choices and altloc
 branches, D failures, E flags, F warnings, G failures and LINCS warnings, H flags). The example's
 numbers are synthetic: never copy them. State the sampling honestly (one replica of N ns per
-system) and finish with what is left, which is `gmxprep-status`'s `next`.
+system) and finish with what is left, which is `gromatrix-status`'s `next`.

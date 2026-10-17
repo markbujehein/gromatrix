@@ -2,7 +2,7 @@
 
 | `reason` / symptom | Cause | What to do |
 |---|---|---|
-| `EM did not converge (Fmax=…)` | Atoms overlap: a bad docked pose, a ligand placed into the protein, or a missing residue rebuilt through the ligand | Check the complex in the 04-relaxed/units file. Fix the pose upstream, rebuild with `gmxprep-gmx build --only <id> --force`, rerun. |
+| `EM did not converge (Fmax=…)` | Atoms overlap: a bad docked pose, a ligand placed into the protein, or a missing residue rebuilt through the ligand | Check the complex in the 04-relaxed/units file. Fix the pose upstream, rebuild with `gromatrix-gmx build --only <id> --force`, rerun. |
 | `nvt: N LINCS warnings during restrained equilibration` | The structure blows up under dynamics: bad ligand parameters (check the CGenFF penalty or the acpype log), a bad protonation state, or an EM that "converged" in a strained geometry | Read `nvt.log` around the first warning; the atom numbers point to the residue. Fix the parameters or the pose; never raise the LINCS limits. |
 | `npt: …` failure after NVT passed | Density or box problem: the box is too small for the solute, or vacuum bubbles | Rebuild with a larger `--pad` in step F. |
 | `mdrun … exited with 1` | GROMACS error (GPU not available, a bad `-gpu_id`, an out-of-range thread count, a corrupt checkpoint) | Read the tail in `reason` and `run.log`. GPU problems: drop `--gpu-id` or fix `--mdrun-args`. |

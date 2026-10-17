@@ -1,9 +1,9 @@
 # CLI reference: step G
 
-## gmxprep-run
+## gromatrix-run
 
 ```
-gmxprep-run --batch-dir B [--only ID ...] [--deffnm md] [--threads N] [--gpu-id ID] [--maxh H]
+gromatrix-run --batch-dir B [--only ID ...] [--deffnm md] [--threads N] [--gpu-id ID] [--maxh H]
             [--mdrun-args "..."] [--gmx gmx] [--force] [--poll 30]
             [--background | --slurm [--time 24:00:00] [--partition P] [--account A]
                                     [--gpus-per-task N] [--max-parallel N] [--job-name gromatrix]
@@ -61,4 +61,4 @@ that exits non-zero is `failed`, never `interrupted`, whatever an older log segm
   `phases.<name>.status` (`done|running|failed|interrupted`, plus `resumed`/`skipped`), `warnings`,
   `reason`, `trajectory`.
 - `B/07-run-logs/run.json`: the last invocation (foreground summary including `only`, or the background pid/log).
-- `gmxprep-status` reports a `running` system whose runner died on this host as `interrupted`.
+- `gromatrix-status` reports a `running` system whose runner died on this host as `interrupted`.

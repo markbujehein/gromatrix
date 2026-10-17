@@ -1,20 +1,20 @@
 ---
 name: structure-prep
-description: "Fetches structures from the RCSB, cleans them with PDBFixer and extracts the right biological unit as enzyme, target and complex PDB files (steps A-C). Use this skill ONLY when gmxprep-status shows structures not yet fetched, fixed or extracted, or the user wants PDB entries downloaded or cleaned, a dimer or assembly chosen, has a ligand bound in only some chain copies, or asks about alternate conformers (altlocs). Covers gmxprep-fetch, gmxprep-fix and gmxprep-extract: search by ID, text or UniProt, author chain IDs, gap loops, altloc analysis, ligand-to-chain assignment. Not for relaxation, AlphaFold, GROMACS builds or MD."
+description: "Fetches structures from the RCSB, cleans them with PDBFixer and extracts the right biological unit as enzyme, target and complex PDB files (steps A-C). Use this skill ONLY when gromatrix-status shows structures not yet fetched, fixed or extracted, or the user wants PDB entries downloaded or cleaned, a dimer or assembly chosen, has a ligand bound in only some chain copies, or asks about alternate conformers (altlocs). Covers gromatrix-fetch, gromatrix-fix and gromatrix-extract: search by ID, text or UniProt, author chain IDs, gap loops, altloc analysis, ligand-to-chain assignment. Not for relaxation, AlphaFold, GROMACS builds or MD."
 ---
 
 # gromatrix: structure preparation (steps A–C)
 
 Shared biophysical rules: `${CLAUDE_PLUGIN_ROOT}/references/domain-rules.md`. Folder layout: `${CLAUDE_PLUGIN_ROOT}/references/batch-layout.md`.
 
-Commands: `gmxprep-fetch`, `gmxprep-fix`, `gmxprep-extract`. Full flags are in
+Commands: `gromatrix-fetch`, `gromatrix-fix`, `gromatrix-extract`. Full flags are in
 `references/cli.md`; read it only when you need a flag that isn't shown here. Error and warning
 texts are explained in `references/troubleshooting.md`.
 
 ## Before you start
 
 ```bash
-gmxprep-status --batch-dir B     # what already exists; skip steps whose outputs are present
+gromatrix-status --batch-dir B     # what already exists; skip steps whose outputs are present
 ```
 
 You need the **target** (HET residue name, or protein chain) and any **cofactors** that must
@@ -25,9 +25,9 @@ ligand in only one of several copies, or label it with the wrong chain.
 ## Run
 
 ```bash
-gmxprep-fetch   --batch-dir B --ids 1ABC 2XYZ            # or --uniprot P12345 --method xray / --query TEXT
-gmxprep-fix     --batch-dir B                            # all of 01-raw/ -> 02-fixed/
-gmxprep-extract --batch-dir B --targets LIG --expect COF:1   # LIG@1ABC scopes a name to one entry
+gromatrix-fetch   --batch-dir B --ids 1ABC 2XYZ            # or --uniprot P12345 --method xray / --query TEXT
+gromatrix-fix     --batch-dir B                            # all of 01-raw/ -> 02-fixed/
+gromatrix-extract --batch-dir B --targets LIG --expect COF:1   # LIG@1ABC scopes a name to one entry
 ```
 
 Check each JSON line before moving on:
@@ -50,7 +50,7 @@ averaged. Use `--altloc branch` to force branches, `--altloc primary` to suppres
 
 ## Hand-off
 
-Done when `gmxprep-status` shows every entry with `unit` set and the expected `matrix_files`.
+Done when `gromatrix-status` shows every entry with `unit` set and the expected `matrix_files`.
 The next skill reads `03-units/<ID>/` directly. Tell the orchestrator:
 - which entries are apo (no target);
 - which entries branched (one manifest complex per branch, `variant: alt<L>`);

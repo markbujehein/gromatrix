@@ -5,17 +5,17 @@
     gromatrix-compute --batch-dir B set --mode slurm --time 24:00:00 --partition gpu --gpus-per-task 1
     gromatrix-compute --batch-dir B set --mode remote --time 48:00:00
     gromatrix-compute --batch-dir B show
-    gromatrix-compute --batch-dir B run-args        # the exact flags for `gmxprep-run`
+    gromatrix-compute --batch-dir B run-args        # the exact flags for `gromatrix-run`
 
 Everything up to step F (structure prep, validation, GROMACS builds, smoke test) needs only CPU
 and GROMACS. Only the production MD (G) is expensive, and it can go three ways:
 
-  local    detached on this machine (`gmxprep-run --background`); CPU-only is fine for short runs
+  local    detached on this machine (`gromatrix-run --background`); CPU-only is fine for short runs
   slurm    write the Slurm array script here and submit it from this machine (a login node)
   remote   write the Slurm array script, then copy the batch to another machine and submit there;
            copy back 06-systems/ afterwards and run step H here
 
-The choice is stored in 00-config/compute.json so the MD agents and `gmxprep-status` read it
+The choice is stored in 00-config/compute.json so the MD agents and `gromatrix-status` read it
 instead of asking again. Prints one JSON line {"ok": ..., ...}.
 """
 
@@ -53,7 +53,7 @@ def detect() -> dict:
 
 
 def run_args(cfg: dict) -> list[str]:
-    """Flags for `gmxprep-run` that realise `cfg` (CPU-only when gpu_id is unset)."""
+    """Flags for `gromatrix-run` that realise `cfg` (CPU-only when gpu_id is unset)."""
     a: list[str] = []
     if cfg["mode"] == "local":
         a += ["--threads", str(cfg.get("threads") or os.cpu_count() or 1)]

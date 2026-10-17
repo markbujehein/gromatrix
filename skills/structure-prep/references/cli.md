@@ -2,10 +2,10 @@
 
 All commands take `--batch-dir`, print one JSON line on stdout and exit non-zero on failure.
 
-## gmxprep-fetch (step A)
+## gromatrix-fetch (step A)
 
 ```
-gmxprep-fetch --batch-dir B (--ids 1ABC ... | --query TEXT | --uniprot P12345 ...)
+gromatrix-fetch --batch-dir B (--ids 1ABC ... | --query TEXT | --uniprot P12345 ...)
               [--max 25] [--method xray|em|nmr] [--max-resolution 3.0]
               [--format cif|pdb|both] [--out raw] [--check-updates]
 ```
@@ -21,10 +21,10 @@ Cache: `01-raw/cache.json` stores sha256/size/URL/revision. Files are reused onl
 hash-identical (`cached`); truncated or edited files are refetched (`repaired`). Unknown or obsolete IDs
 land in `failed` as `not found / obsolete`.
 
-## gmxprep-fix (step B)
+## gromatrix-fix (step B)
 
 ```
-gmxprep-fix --batch-dir B [--in raw] [--out fixed] [--ids 1ABC ...] [--max-loop 8]
+gromatrix-fix --batch-dir B [--in raw] [--out fixed] [--ids 1ABC ...] [--max-loop 8]
             [--waters none|ligand-shell|shell|all] [--water-shell 3.5]
             [--keep-het all|none|RES,RES] [--keep-additives] [--keep-nonstandard]
 ```
@@ -46,10 +46,10 @@ Outputs: `02-fixed/<ID>.pdb` (author numbering, original B-factors, built atoms 
 and `02-fixed/<ID>.meta.json` (entities, assemblies, operators, gap and removal report). JSON line
 per structure: `built_atoms`, `modelled_gaps`, `open_gaps`, `removed_*`, `warnings`.
 
-## gmxprep-extract (step C)
+## gromatrix-extract (step C)
 
 ```
-gmxprep-extract --batch-dir B [--in fixed] [--out units] [--ids ...]
+gromatrix-extract --batch-dir B [--in fixed] [--out units] [--ids ...]
                 [--targets RES[,RES][@ID]] [--target-chains X[,Y][@ID]] [--expect RES[:n],...]
                 [--assembly auto|none|N] [--ligand-cutoff 4.5] [--contact-cutoff 5.0]
                 [--min-contacts 10] [--max-chains 12] [--unit CANDIDATE] [--allow-incomplete]

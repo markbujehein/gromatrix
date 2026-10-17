@@ -27,7 +27,7 @@ were designed out.
 - **State lives on disk, not in the conversation.**
   - Every step writes its result to the batch directory (`unit.json`, `relax.json`,
     `system.json`, `run.json`, `analysis.json`).
-  - `gmxprep-status` reads only those files. It returns a verdict per step A–H plus
+  - `gromatrix-status` reads only those files. It returns a verdict per step A–H plus
     `next: {skill, command, why}`.
   - A fresh session, or a different agent, resumes any batch at the right step.
 - **Progressive disclosure.**
@@ -107,7 +107,7 @@ from the request, then followed into the code.
     family-dependent step reads and checks it: relax uses the lock's family, build checks the
     lock, and verify re-checks every system.
   - **Stamping:** every ligand parameter set and every built system carries the forcefield
-    identity, and `gmxprep-gmx verify` fails on any mismatch.
+    identity, and `gromatrix-gmx verify` fails on any mismatch.
   - **One template per ligand:** each ligand is parameterised once per batch (acpype/GAFF2/AM1-BCC
     or CGenFF, penalty-gated at 50), and every pose is mapped onto that template's atom order. So
     "ligand alone" and "ligand in complex" are the same molecule.

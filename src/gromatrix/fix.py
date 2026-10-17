@@ -1,6 +1,6 @@
 """[B] Crystallographic clean-up with PDBFixer.
 
-    gmxprep-fix --batch-dir B [--in raw] [--out fixed] [--ids 1ABC ...]
+    gromatrix-fix --batch-dir B [--in raw] [--out fixed] [--ids 1ABC ...]
                 [--max-loop 8] [--waters none|ligand-shell|shell|all] [--water-shell 3.5]
                 [--keep-het all|none|RES,RES] [--keep-additives] [--keep-nonstandard]
 
@@ -319,7 +319,7 @@ def fix_one(path: Path, out_dir: Path, args) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
-        prog="gmxprep-fix", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+        prog="gromatrix-fix", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--batch-dir", type=Path, required=True)
     ap.add_argument("--in", dest="indir", default=layout.RAW)

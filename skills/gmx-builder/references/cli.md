@@ -1,18 +1,18 @@
-# CLI reference: step F (`gmxprep-gmx`)
+# CLI reference: step F (`gromatrix-gmx`)
 
 All commands take `--batch-dir`, print one JSON line on stdout and exit non-zero on failure.
 
-## gmxprep-gmx 
+## gromatrix-gmx 
 
 ```
-gmxprep-gmx lock   --batch-dir B --forcefield NAME
-gmxprep-gmx plan   --batch-dir B --manifest M [--allow-incomplete]
-gmxprep-gmx build  --batch-dir B --manifest M [--forcefield NAME] [--only ID ...] [--force]
+gromatrix-gmx lock   --batch-dir B --forcefield NAME
+gromatrix-gmx plan   --batch-dir B --manifest M [--allow-incomplete]
+gromatrix-gmx build  --batch-dir B --manifest M [--forcefield NAME] [--only ID ...] [--force]
                    [--box dodecahedron|cubic|octahedron|triclinic] [--pad 1.2] [--conc 0.15]
                    [--temp 300] [--md-ns 100] [--maxwarn 0] [--gmx gmx]
                    [--allow-incomplete] [--allow-auto-protonation] [--accept-high-penalty]
-gmxprep-gmx verify --batch-dir B [--gmx gmx]
-gmxprep-gmx smoke  --batch-dir B [--only ID ...] [--nvt-steps 5000] [--mdrun-args "-nt 8"]
+gromatrix-gmx verify --batch-dir B [--gmx gmx]
+gromatrix-gmx smoke  --batch-dir B [--only ID ...] [--nvt-steps 5000] [--mdrun-args "-nt 8"]
 ```
 
 | Flag | Meaning |

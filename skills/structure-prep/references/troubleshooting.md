@@ -10,7 +10,7 @@
 | `no candidate units (assembly 'N' not found?)` | `--assembly N` does not exist | Pick an id listed in `02-fixed/<ID>.meta.json` |
 | `every candidate exceeds --max-chains` | Large assemblies (capsids, chaperonins) | Raise `--max-chains` or use `--assembly none` |
 | `needs more than 62 chain IDs` | Assembly too large for PDB format | Use a smaller assembly |
-| `alternate conformers: ... equivalent within coordinate error` | Conformers differ by a label permutation (ring flip) or less than `--altloc-rmsd` (e.g. raw 1.0 Å but symmetry-corrected 0.4 Å for a flipped para-substituted ring) | Nothing to do: the primary conformer is used. To compare both anyway: `gmxprep-extract --altloc branch`. |
+| `alternate conformers: ... equivalent within coordinate error` | Conformers differ by a label permutation (ring flip) or less than `--altloc-rmsd` (e.g. raw 1.0 Å but symmetry-corrected 0.4 Å for a flipped para-substituted ring) | Nothing to do: the primary conformer is used. To compare both anyway: `gromatrix-extract --altloc branch`. |
 | `alternate conformers: ... distinct poses` | The deposit has two genuinely different binding modes | Step C branches the matrix automatically. Add each `complex_<T>_alt<L>.pdb` as a manifest complex with `variant: alt<L>`. Never average the poses. |
 | `INCONSISTENT GEOMETRY - excluded` | A conformer's bond lengths differ from the primary's by > 0.2 Å (broken or averaged model) | That conformer is never used. Report it to the user. |
 | `severe clash with environment` (unit.json → altlocs) | A branch pose overlaps the protein in that state | The branch is skipped. Usually an occupancy-coupled side chain carries a different letter. |

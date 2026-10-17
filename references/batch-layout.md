@@ -2,13 +2,13 @@
 
 All state lives in one batch directory `B`. Folders are numbered in pipeline order; folders that
 belong to one stage share a number. Names come from `gromatrix.layout`, the only place that defines
-them. `gmxprep-status --batch-dir B` reads exactly these files, so the files are the hand-off.
+them. `gromatrix-status --batch-dir B` reads exactly these files, so the files are the hand-off.
 
 | Folder or file | Written by | Read by | Holds |
 |---|---|---|---|
 | `00-config/forcefield.lock.json` | lock | D, F | the forcefield identity, set once, permanent |
 | `00-config/compute.json` | `gromatrix-compute set` | G agent, status | `mode` local / slurm / remote, threads, gpu_id, Slurm options |
-| `00-config/manifest.generated.yaml`, `pipeline.json` | `gmxprep-pipeline` | F, humans | derived step-F manifest; per-stage result of a pipeline run |
+| `00-config/manifest.generated.yaml`, `pipeline.json` | `gromatrix-pipeline` | F, humans | derived step-F manifest; per-stage result of a pipeline run |
 | `01-raw/` | A fetch | B, status | `<ID>.cif`, `cache.json` (sha256, revision) |
 | `02-fixed/` | B fix | C | `<ID>.pdb`, `<ID>.meta.json` (gaps, removals, altlocs) |
 | `03-units/<ID>/` | C extract | D, E, F | `unit.json`, `enzyme.pdb`, `target_<T>.pdb`, `complex_<T>[_alt<L>].pdb` |
@@ -24,7 +24,7 @@ them. `gmxprep-status --batch-dir B` reads exactly these files, so the files are
 
 ## Command contract
 
-Every `gmxprep-*`, `gromatrix-report` and `gromatrix-compute` command prints exactly one JSON
+Every `gromatrix-*`, `gromatrix-report` and `gromatrix-compute` command prints exactly one JSON
 object on stdout, `{"ok": true|false, ...}`, and exits 0 or 1. Read that line; open logs only on
 failure. System ids are `<enzyme>`, `<target>` and `<enzyme>__<target>`. The status command's
 `next` is `{skill, agent?, command, why}`; `agent` is set for G and H.

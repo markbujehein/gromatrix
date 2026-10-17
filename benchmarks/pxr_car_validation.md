@@ -14,7 +14,7 @@ report will be updated with those results.
 
 | | |
 |---|---|
-| Panel definition | `gmxprep-fetch --uniprot O75469 Q14994 --method xray`: every X-ray entry containing human PXR (NR1I2, O75469) and/or human CAR (NR1I3, Q14994). **82 entries.** |
+| Panel definition | `gromatrix-fetch --uniprot O75469 Q14994 --method xray`: every X-ray entry containing human PXR (NR1I2, O75469) and/or human CAR (NR1I3, Q14994). **82 entries.** |
 | Target per entry | Largest drug-like HET (by heavy atoms) after excluding water, ions and crystallisation additives ([`pick_targets.py`](pick_targets.py)). Entries with none are processed as apo (`enzyme.pdb` only). This heuristic exists only for the benchmark; real studies declare `--targets`. |
 | Settings | All defaults: `--max-loop 8`, `--ligand-cutoff 4.5`, `--altloc auto`, `--altloc-rmsd 0.5`, `--plddt-min 70`, `--min-length 30`. |
 | Hardware | Cloud container, 4 CPU cores, no GPU. |

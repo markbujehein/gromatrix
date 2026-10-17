@@ -9,11 +9,11 @@ subagent contract) are in the top-level `references/`.
 ## Contracts every step follows
 
 - **One command per step.** Each command takes `--batch-dir`, prints exactly one JSON result line
-  (`{"ok": …}`) and exits non-zero on failure. `gmxprep-run` and `gmxprep-pipeline` stream
+  (`{"ok": …}`) and exits non-zero on failure. `gromatrix-run` and `gromatrix-pipeline` stream
   progress lines before it. Exceptions are caught in `main()` and reported as `{"ok": false,
   "error": …}`, never as a traceback.
 - **State lives in files.** Every step reads and writes only the batch directory.
-  `gmxprep-status` reconstructs progress from those files alone, so any session or agent can
+  `gromatrix-status` reconstructs progress from those files alone, so any session or agent can
   resume a batch.
 - **Content-keyed caching.** Downloads are sha256-verified. Ligand parameters are fingerprinted
   from their SMILES, charge and files. A built system's `inputs_sha` covers every input file and
@@ -50,7 +50,7 @@ subagent contract) are in the top-level `references/`.
 gromatrix/
 ├── pyproject.toml / pixi.toml / pixi.lock
 ├── examples/manifest.yaml            # matrix definition consumed by step F
-├── examples/pipeline.yaml            # one-command A-H run (gmxprep-pipeline)
+├── examples/pipeline.yaml            # one-command A-H run (gromatrix-pipeline)
 ├── benchmarks/                       # validation reports on real structure panels
 ├── scripts/check_plugin.py           # validates plugin.json, marketplace.json, skills/ and agents/ (CI)
 ├── src/gromatrix/
@@ -77,7 +77,7 @@ gromatrix/
 │   ├── plotstyle.py     # shared matplotlib style
 │   ├── compute.py       # gromatrix-compute: local / slurm / remote choice for step G
 │   ├── pipeline.py      # A-H runner: manifest -> plan -> in-process steps, generated step-F manifest
-│   └── status.py        # gmxprep-status: A-H progress + next step (skill hand-off contract)
+│   └── status.py        # gromatrix-status: A-H progress + next step (skill hand-off contract)
 ├── tests/                # unit tests + offline end-to-end regression (tests/data/)
 ├── .claude-plugin/       # plugin.json + marketplace.json: the repository is a Claude Code plugin
 ├── skills/               # start (orchestrator), structure-prep, validate, gmx-builder, execution, analysis
@@ -125,7 +125,7 @@ All names are defined once, in src/gromatrix/layout.py.
   * `[ molecules ]` vs `.gro` checks became a full atom walk with charge gates;
   * absolute includes became a relative forcefield symlink;
   * TaskBlaster caching became an input-hash resume;
-  * `-t` checkpoint chaining is built into `run.sh` and `gmxprep-run`.
+  * `-t` checkpoint chaining is built into `run.sh` and `gromatrix-run`.
 
   Avoided: blanket `-maxwarn 1`, genion group numbers, hand-adjusted residue charges.
 * **Step G.** The protocol is a four-row phase table: each phase's input coordinates, whether it

@@ -1,6 +1,6 @@
 """[A] Fetch structures from the RCSB PDB.
 
-    gmxprep-fetch --batch-dir B (--ids 1ABC 2XYZ ... | --query TEXT | --uniprot P12345 ...)
+    gromatrix-fetch --batch-dir B (--ids 1ABC 2XYZ ... | --query TEXT | --uniprot P12345 ...)
                   [--max 25] [--method xray] [--max-resolution 3.0]
                   [--format cif|pdb|both] [--out raw] [--check-updates]
 
@@ -137,7 +137,7 @@ def fetch_one(pid: str, fmt: str, cache: Cache, check_updates: bool) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
-        prog="gmxprep-fetch", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+        prog="gromatrix-fetch", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--batch-dir", type=Path, required=True)
     src = ap.add_mutually_exclusive_group(required=True)
