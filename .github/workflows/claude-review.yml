@@ -1,0 +1,53 @@
+name: Claude review
+
+# Automated review of pull requests (anthropics/claude-code-action, "Automatic PR Code Review" in its
+# docs/solutions.md). Needs the ANTHROPIC_API_KEY repository secret and the Claude GitHub app.
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Review
+    # Fork and Dependabot PRs get no repository secrets, so the job would only fail: skip them.
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write   # post the review comments
+      id-token: write        # the Claude GitHub app authenticates through OIDC
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+      - uses: anthropics/claude-code-action@f27be6b65a4652f08a2ba3cff79114829b588967 # v1.0.252
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Review this pull request of gromatrix, a PDB-to-GROMACS pipeline and Claude Code plugin.
+            Focus on correctness bugs, edge cases in the biophysics and file handling, unsafe
+            shell or hook behaviour, missing tests, and fit with the conventions in CLAUDE.md and
+            docs/architecture.md. Skip style nits that ruff already covers. Be brief: only report
+            findings you are confident about.
+
+            The PR branch is already checked out. Use `gh pr comment` for the summary and
+            `mcp__github_inline_comment__create_inline_comment` (with `confirmed: true`) for specific lines.
+            Only post GitHub comments.
+          claude_args: |
+            --max-turns 15
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
