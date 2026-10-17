@@ -30,6 +30,13 @@ def _json(path: Path) -> dict:
         return {}
 
 
+def _runnable(system_json: Path) -> bool:
+    """Built systems step G will run: a failed smoke test is skipped (unless forced, then run.json exists)."""
+    st = _json(system_json)
+    smoke_failed = st.get("smoke", {}).get("ok") is False
+    return st.get("status") == "ok" and (not smoke_failed or (system_json.parent / "run.json").exists())
+
+
 def system_state(wd: Path) -> tuple[str, dict[str, str]]:
     """(run status, {phase: status}) of one system."""
     from .run import owner_alive
@@ -53,7 +60,7 @@ def system_state(wd: Path) -> tuple[str, dict[str, str]]:
 def watch(batch: Path, interval: float, once: bool) -> int:
     seen: dict[tuple[str, str], str] = {}
     while True:
-        wds = sorted(p.parent for p in (batch / layout.SYSTEMS).glob("*/system.json") if _json(p).get("status") == "ok")
+        wds = sorted(p.parent for p in (batch / layout.SYSTEMS).glob("*/system.json") if _runnable(p))
         if not wds:
             print(json.dumps({"ok": False, "error": f"no built systems in {batch / layout.SYSTEMS}"}), flush=True)
             return 2
@@ -66,7 +73,7 @@ def watch(batch: Path, interval: float, once: bool) -> int:
                     rec = {"system": wd.name, "phase": phase, "status": status, "run": runs[wd.name]}
                     print(json.dumps(rec), flush=True)
         if once or all(r in FINAL for r in runs.values()):
-            return 0 if all(r == "done" for r in runs.values()) else 1
+            return 1 if any(r in ("failed", "interrupted") for r in runs.values()) else 0
         time.sleep(interval)
 
 

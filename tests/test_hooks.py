@@ -264,3 +264,14 @@ def test_watch_falls_back_to_phase_logs(tmp_path, capsys):
     (wd / "em.log").write_text("Fatal error:\nbad\n")
     watch_main(["--batch-dir", str(tmp_path), "--once"])
     assert json.loads(capsys.readouterr().out.splitlines()[0])["status"] == "failed"
+
+
+def test_watch_skips_smoke_failed_systems_and_once_is_not_an_error(tmp_path, capsys):
+    sysd = tmp_path / "06-systems"
+    _w(sysd / "BAD" / "system.json", {"status": "ok", "smoke": {"ok": False}})
+    _w(sysd / "E1" / "system.json", {"status": "ok"})
+    _w(sysd / "E1" / "run.json", {"status": "done", "phases": {"em": {"status": "done"}}})
+    assert watch_main(["--batch-dir", str(tmp_path), "--interval", "0.01"]) == 0  # does not wait for BAD
+    _w(sysd / "E1" / "run.json", {"status": "running", "phases": {"em": {"status": "running"}}, "host": "elsewhere", "pid": 1})
+    capsys.readouterr()
+    assert watch_main(["--batch-dir", str(tmp_path), "--once"]) == 0  # still running: not a failure
