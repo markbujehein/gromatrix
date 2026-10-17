@@ -2,10 +2,10 @@
 
 All commands take `--batch-dir`, print one JSON line on stdout and exit non-zero on failure.
 
-## gmxprep-relax (step D)
+## gromatrix-relax (step D)
 
 ```
-gmxprep-relax --batch-dir B [--in units] [--out relaxed] [--ids ...]
+gromatrix-relax --batch-dir B [--in units] [--out relaxed] [--ids ...]
               [--files enzyme.pdb complex_*.pdb target_*.pdb] [--forcefield amber|charmm]
               [--solvent auto|gbn2|rf] [--restraint-k 1000] [--max-iter 2000] [--free-iter 1000]
               [--max-rmsd 2.5] [--max-drop 100] [--pocket-cutoff 5.0] [--ph 7.0] [--platform auto|CPU|CUDA|OpenCL]
@@ -23,10 +23,10 @@ energy drop below −`--max-drop` kJ/mol/atom), `distortion` (RMSD alone), `chai
 created), `unresolved clash` (final E > 0), `pocket collapse` (< 2.0 Å to a held-out HET). Ligand-only
 files are `skipped`. Per-file details: `04-relaxed/<ID>/relax.json`.
 
-## gmxprep-afcompare (step E, module `afdb.py`)
+## gromatrix-afcompare (step E, module `afdb.py`)
 
 ```
-gmxprep-afcompare --batch-dir B [--in relaxed] [--ids ...] [--files enzyme.pdb target_*.pdb]
+gromatrix-afcompare --batch-dir B [--in relaxed] [--ids ...] [--files enzyme.pdb target_*.pdb]
                   [--uniprot A:P12345,B:Q67890[@ID]] [--plddt-min 70] [--min-length 30]
                   [--tm-min 0.8] [--lddt-min 0.7] [--out 05-alphafold/af_report.csv] [--afdb-dir 05-alphafold-cache]
 ```

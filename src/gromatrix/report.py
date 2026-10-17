@@ -2,7 +2,7 @@
 
     gromatrix-report --batch-dir B [--no-figures]
 
-Reads only the files each step already wrote (the same contract as `gmxprep-status`), so it can
+Reads only the files each step already wrote (the same contract as `gromatrix-status`), so it can
 run at any point and again after every step. It writes
 
     B/09-reports/README.md      one section per step B-H: what happened, as tables, with figures
@@ -10,7 +10,7 @@ run at any point and again after every step. It writes
                                 RMSD overlay and the receptor x target matrix
 
 Per-system plot folders (B/06-systems/<ID>/analysis/) get their own README.md from
-`analysis_readme`, which `gmxprep-analyze` calls after drawing the plots. Figures need matplotlib
+`analysis_readme`, which `gromatrix-analyze` calls after drawing the plots. Figures need matplotlib
 (the `analysis` extra); without it the Markdown is still written.
 
 Prints one JSON line {"ok": ..., "report": path, "figures": [...]}.

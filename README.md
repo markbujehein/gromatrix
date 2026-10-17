@@ -30,16 +30,16 @@ human judgement overruled the AI, is the [second section](#the-human-pilot-and-t
 
 | Step | Command | What it does |
 |---|---|---|
-| lock | `gmxprep-gmx lock` | fixes one forcefield for the whole batch (AMBER or CHARMM family) |
-| A | `gmxprep-fetch` | RCSB download by ID, full-text or UniProt search; sha256-verified cache |
-| B | `gmxprep-fix` | PDBFixer repair, author chain IDs, gap policy, alternate-conformer analysis |
-| C | `gmxprep-extract` | picks the biological unit that holds the targets; slices enzyme / target / complex |
-| D | `gmxprep-relax` | restrained OpenMM minimisation with failure labels (explosion, pocket collapse, …) |
-| E | `gmxprep-afcompare` | per-chain comparison with AlphaFold DB: RMSD, TM-score, Cα-lDDT |
-| F | `gmxprep-gmx build / verify / smoke` | topologies, ligand parameters, box, solvent, ions, gated `em.tpr` |
-| G | `gmxprep-run` | EM → NVT → NPT → production with checkpoint resume; local, background or Slurm |
-| H | `gmxprep-analyze` | PBC removal, RMSD, RMSF, Rg, H-bond persistence, plots, matrix summary |
-| A–H | `gmxprep-pipeline` | all of the above from one manifest, with dry run and fail-fast |
+| lock | `gromatrix-gmx lock` | fixes one forcefield for the whole batch (AMBER or CHARMM family) |
+| A | `gromatrix-fetch` | RCSB download by ID, full-text or UniProt search; sha256-verified cache |
+| B | `gromatrix-fix` | PDBFixer repair, author chain IDs, gap policy, alternate-conformer analysis |
+| C | `gromatrix-extract` | picks the biological unit that holds the targets; slices enzyme / target / complex |
+| D | `gromatrix-relax` | restrained OpenMM minimisation with failure labels (explosion, pocket collapse, …) |
+| E | `gromatrix-afcompare` | per-chain comparison with AlphaFold DB: RMSD, TM-score, Cα-lDDT |
+| F | `gromatrix-gmx build / verify / smoke` | topologies, ligand parameters, box, solvent, ions, gated `em.tpr` |
+| G | `gromatrix-run` | EM → NVT → NPT → production with checkpoint resume; local, background or Slurm |
+| H | `gromatrix-analyze` | PBC removal, RMSD, RMSF, Rg, H-bond persistence, plots, matrix summary |
+| A–H | `gromatrix-pipeline` | all of the above from one manifest, with dry run and fail-fast |
 
 ## The human pilot and the AI engine
 
@@ -47,7 +47,7 @@ human judgement overruled the AI, is the [second section](#the-human-pilot-and-t
 |---|---|
 | **Domain architect and biophysics lead.** Defined the matrix concept and the forcefield rules (no mixing within a batch; acpype for AMBER, CGenFF for CHARMM), and named the hard structural cases. | **Primary developer.** Wrote all of `src/` (~6,700 lines), the CI workflows and the release tooling. |
 | **Pipeline strategist.** Set the step order and the scope of each step, and chose the PXR/CAR benchmark. | **Test author.** Wrote 82 tests: an offline end-to-end run on 1XVP, a fake `gmx` that reproduces GROMACS checkpoint and `-maxh` behaviour, and a synthetic trajectory with known answers. |
-| **Quality assurer.** Required independent review agents, pixi CI and honest reporting of what is untested; holds the version at 0.x; owns merges and tags. | **Skill integrator.** Built six agent skills and the `gmxprep-status` hand-off; ran the benchmark and two rounds of review agents. |
+| **Quality assurer.** Required independent review agents, pixi CI and honest reporting of what is untested; holds the version at 0.x; owns merges and tags. | **Skill integrator.** Built six agent skills and the `gromatrix-status` hand-off; ran the benchmark and two rounds of review agents. |
 
 **The agentic control plane.** An agent running an eight-step pipeline typically fails by
 forgetting state, or by drowning in documentation for steps it isn't running. gromatrix is built
@@ -56,14 +56,14 @@ so neither can happen:
 ```mermaid
 flowchart LR
     U(["user"]) --> O["gromatrix<br/>orchestrator skill<br/><i>decisions + order</i>"]
-    O -->|"gmxprep-status"| S{{"status:<br/>steps A–H + next skill/command"}}
+    O -->|"gromatrix-status"| S{{"status:<br/>steps A–H + next skill/command"}}
     S --> P["structure-prep<br/>A–C"] & V["validate<br/>D–E"] & B["gmx-builder<br/>F"] & X["execution<br/>G"] & Y["analysis<br/>H"]
-    P & V & B & X & Y -->|"run gmxprep-* ;<br/>read 1 JSON line"| D[("batch directory<br/>*.json state files")]
+    P & V & B & X & Y -->|"run gromatrix-* ;<br/>read 1 JSON line"| D[("batch directory<br/>*.json state files")]
     D -->|"read back"| S
 ```
 
 - **State lives on disk.** Every step writes JSON state files into the batch directory.
-  `gmxprep-status` reads only those files and names the `next` skill and command, so any session
+  `gromatrix-status` reads only those files and names the `next` skill and command, so any session
   can resume any batch.
 - **Progressive disclosure.** The orchestrator holds only the hard-to-undo decisions. Each stage
   skill documents only its own commands, with details in `references/`. A test fails if a stage
@@ -106,31 +106,31 @@ flowchart TB
     LOCK[("00-config/forcefield.lock.json")]
 
     subgraph PREP["Preparation · PDBFixer, SciPy, NumPy"]
-        A["<b>A · gmxprep-fetch</b><br/>RCSB search + download"]
-        B["<b>B · gmxprep-fix</b><br/>repair · author chain IDs · altloc analysis"]
-        C["<b>C · gmxprep-extract</b><br/>unit ranking · HET→chain KD-tree · slicing"]
+        A["<b>A · gromatrix-fetch</b><br/>RCSB search + download"]
+        B["<b>B · gromatrix-fix</b><br/>repair · author chain IDs · altloc analysis"]
+        C["<b>C · gromatrix-extract</b><br/>unit ranking · HET→chain KD-tree · slicing"]
         A -->|"01-raw/ID.cif · cache.json (sha256)"| B
         B -->|"02-fixed/ID.pdb · ID.meta.json"| C
     end
 
     subgraph VAL["Validation · OpenMM, AlphaFold DB (optional)"]
-        D["<b>D · gmxprep-relax</b><br/>2-stage restrained minimisation + gates"]
-        E["<b>E · gmxprep-afcompare</b><br/>RMSD · TM-score · Cα-lDDT"]
+        D["<b>D · gromatrix-relax</b><br/>2-stage restrained minimisation + gates"]
+        E["<b>E · gromatrix-afcompare</b><br/>RMSD · TM-score · Cα-lDDT"]
         D -->|"04-relaxed/ID/*.pdb · relax.json"| E
     end
 
     C -->|"03-units/ID/ enzyme.pdb · target_T.pdb ·<br/>complex_T[_altL].pdb · unit.json"| D
     C -.->|"skip D–E"| MAN
-    E -->|"05-alphafold/ID.json · af_report.csv"| MAN["manifest.yaml<br/>(written, or generated by gmxprep-pipeline)"]
+    E -->|"05-alphafold/ID.json · af_report.csv"| MAN["manifest.yaml<br/>(written, or generated by gromatrix-pipeline)"]
 
     subgraph GMX["GROMACS engine · pdb2gmx, acpype / CGenFF, mdrun"]
-        F["<b>F · gmxprep-gmx</b><br/>build · verify · smoke"]
-        G["<b>G · gmxprep-run</b><br/>EM → NVT → NPT → MD"]
+        F["<b>F · gromatrix-gmx</b><br/>build · verify · smoke"]
+        G["<b>G · gromatrix-run</b><br/>EM → NVT → NPT → MD"]
         F -->|"06-systems/id/ topol.top · *.itp · solv_ions.gro ·<br/>index.ndx · mdp/*.mdp · em.tpr · system.json"| G
     end
 
     MAN --> F
-    G -->|"*.tpr · *.cpt · md.xtc · md.edr · run.json"| H["<b>H · gmxprep-analyze</b><br/>trjconv PBC + fit · MDAnalysis"]
+    G -->|"*.tpr · *.cpt · md.xtc · md.edr · run.json"| H["<b>H · gromatrix-analyze</b><br/>trjconv PBC + fit · MDAnalysis"]
     H -->|"analysis/analysis.json · rmsd/rmsf/rg/hbonds.png"| OUT(["08-analysis/analysis_summary.csv<br/>one row per system"])
 
     LOCK -.->|"family"| D
@@ -251,14 +251,14 @@ Steps lock → B → C on the bundled 1XVP structure run offline in about 5 seco
 
 ```bash
 mkdir -p runs/demo/raw && gunzip -c tests/data/1XVP.cif.gz > runs/demo/raw/1XVP.cif
-pixi run gmxprep-gmx lock --batch-dir runs/demo --forcefield amber
-pixi run gmxprep-fix --batch-dir runs/demo
-pixi run gmxprep-extract --batch-dir runs/demo --targets CID
-pixi run gmxprep-status --batch-dir runs/demo
-pixi run gmxprep-pipeline --manifest examples/pipeline.yaml --dry-run   # the A–H plan; nothing runs
+pixi run gromatrix-gmx lock --batch-dir runs/demo --forcefield amber
+pixi run gromatrix-fix --batch-dir runs/demo
+pixi run gromatrix-extract --batch-dir runs/demo --targets CID
+pixi run gromatrix-status --batch-dir runs/demo
+pixi run gromatrix-pipeline --manifest examples/pipeline.yaml --dry-run   # the A–H plan; nothing runs
 ```
 
-Every command prints one JSON result line. The output of `gmxprep-extract` (paths shortened):
+Every command prints one JSON result line. The output of `gromatrix-extract` (paths shortened):
 
 ```json
 {"ok": true, "units": [{"id": "1XVP", "selected": "assembly-2", "chains": ["C", "D", "G", "H"],
@@ -268,12 +268,12 @@ Every command prints one JSON result line. The output of `gmxprep-extract` (path
  "failed": []}
 ```
 
-`gmxprep-status` then reports where the batch stands and what comes next (trimmed):
+`gromatrix-status` then reports where the batch stands and what comes next (trimmed):
 
 ```json
 {"ok": true, "forcefield": "amber99sb-ildn",
  "steps": {"A": "done", "B": "done", "C": "done", "D": "pending", "E": "pending", "F": "pending", "G": "pending", "H": "pending"},
- "next": {"skill": "gromatrix:validate", "command": "gmxprep-relax --batch-dir runs/demo", "why": "not relaxed: ['1XVP']"}}
+ "next": {"skill": "gromatrix:validate", "command": "gromatrix-relax --batch-dir runs/demo", "why": "not relaxed: ['1XVP']"}}
 ```
 
 Steps A and E need network access to RCSB, PDBe and AlphaFold DB. Steps F–H need GROMACS:
@@ -311,13 +311,13 @@ orchestrator asks once where the MD runs (`gromatrix-compute`): this machine (CP
 short runs), a Slurm cluster from here, or hand-off to another machine. See
 [`references/compute-modes.md`](references/compute-modes.md).
 
-**The skills drive the `gmxprep-*` commands, so install the package wherever those commands
+**The skills drive the `gromatrix-*` commands, so install the package wherever those commands
 run.** No clone is needed:
 
 ```bash
 conda create -n gromatrix -c conda-forge python=3.12 openmm pdbfixer rdkit biopython scipy pyyaml mdanalysis matplotlib-base
 conda activate gromatrix && pip install "gromatrix @ git+https://github.com/markbujehein/gromatrix"
-gmxprep-status --batch-dir test_batch      # prints {"ok": false, ...}: the commands are installed
+gromatrix-status --batch-dir test_batch      # prints {"ok": false, ...}: the commands are installed
 ```
 
 Add `gromacs acpype openbabel` (conda-forge) on the machine that builds and runs MD. Inside a clone,

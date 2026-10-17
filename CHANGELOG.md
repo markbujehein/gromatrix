@@ -8,31 +8,31 @@
   - Skills renamed without the prefix (`gromatrix:start`, `structure-prep`, `validate`, `gmx-builder`,
     `execution`, `analysis`) with descriptions in the form what / when / covers.
   - Subagents `gromatrix:md-runner` (G) and `gromatrix:md-analyst` (H): the orchestrator never runs
-    `gmxprep-run` or `gmxprep-analyze` itself; the agents return one JSON payload.
-  - `gmxprep-status` `next` now carries `agent` for G and H and plugin-namespaced skill names.
+    `gromatrix-run` or `gromatrix-analyze` itself; the agents return one JSON payload.
+  - `gromatrix-status` `next` now carries `agent` for G and H and plugin-namespaced skill names.
   - Replaces the standalone skill zips and `scripts/package_skills.py` with `scripts/check_plugin.py`.
 - **`gromatrix-compute`**: stores where MD runs (local, Slurm, remote) in `00-config/compute.json`;
   CPU-only is fine; the orchestrator asks once before step G.
 - **`gromatrix-report`**: `09-reports/README.md` with tables and figures for steps B-H, and a README in
   every system's `analysis/` folder explaining each plot.
 - MIT `LICENSE` and `THIRD_PARTY_NOTICES.md`.
-- **G `gmxprep-run`**: runs EM → NVT → NPT → production for every built system.
+- **G `gromatrix-run`**: runs EM → NVT → NPT → production for every built system.
   - Per-phase resume from checkpoints (`mdrun -cpi`).
   - Gates: EM convergence, plus zero LINCS warnings in NVT/NPT.
   - Live JSON progress.
   - Runs in the foreground, with `--background`, or as a Slurm array (`--slurm`, with `-maxh`
     derived from the walltime and SIGTERM checkpointing).
-- **H `gmxprep-analyze`**: two-pass `trjconv` PBC removal and fit.
+- **H `gromatrix-analyze`**: two-pass `trjconv` PBC removal and fit.
   - Metrics: Cα RMSD, target RMSD in the protein frame, RMSF, Rg, and target–enzyme H-bond
     occupancy.
   - Flags: `ligand_drift`, `protein_unstable`, `no_target_hbonds`.
   - Plots and `analysis_summary.csv` across the matrix.
-- **`gmxprep-pipeline`**: steps A–H from one manifest (`examples/pipeline.yaml`).
+- **`gromatrix-pipeline`**: steps A–H from one manifest (`examples/pipeline.yaml`).
   - Options: `--dry-run`, `--skip-relax` / `--skip-afdb` / `--skip-smoke`, `--from` / `--to`,
     and fail-fast with `--keep-going`.
   - Without `enzymes:`, the step-F manifest is generated from the step-C units.
-- `gmxprep-status` reports `steps` A–H and routes to the new skills. A batch built from the
-  user's own PDBs no longer points back to `gmxprep-fetch`.
+- `gromatrix-status` reports `steps` A–H and routes to the new skills. A batch built from the
+  user's own PDBs no longer points back to `gromatrix-fetch`.
 - Skills `gromatrix-execution` (G) and `gromatrix-analysis` (H). The orchestrator now covers
   end-to-end steering and one-command mode. A test enforces that stage skills only run their own
   commands.
@@ -41,6 +41,9 @@
   extra `analysis`.
 
 ### Changed
+- **Breaking: every `gmxprep-*` command is now `gromatrix-*`** (`gromatrix-fetch`, `-fix`, `-extract`, `-relax`,
+  `-afcompare`, `-gmx`, `-run`, `-analyze`, `-pipeline`, `-status`), one namespace with `gromatrix-report` and
+  `gromatrix-compute`. No aliases: the package is unreleased.
 - **Breaking: numbered batch folders** (`00-config` ... `09-reports`), all defined in `gromatrix.layout`.
   Batches from earlier development builds must be recreated or their folders renamed.
 - Step F runs `pdb2gmx -renum`, so insertion codes stay distinct residues. It records
@@ -51,36 +54,36 @@
 - `checks.scan_md_log` reads the newest log segment for how a run ended, and counts LINCS
   warnings over all segments. It is shared by smoke and step G.
 - The import package is now `gromatrix`, as the distribution always was; it was `gmxprep`. The
-  `gmxprep-*` command names are unchanged.
+  `gmxprep-*` command names were unchanged at that point (all commands are `gromatrix-*` as of v0.2.0).
 
 ## v0.1.0 (alpha, never tagged)
 
 First alpha: steps A–F, status and the agent toolkit.
 
-### Pipeline (`gmxprep-*` commands)
-- **A `gmxprep-fetch`**: RCSB download by ID, full-text or UniProt search. Downloads are cached and
+### Pipeline (`gromatrix-*` commands)
+- **A `gromatrix-fetch`**: RCSB download by ID, full-text or UniProt search. Downloads are cached and
   verified by sha256, corrupted files are repaired, and entry revisions are tracked
   (`--check-updates`).
-- **B `gmxprep-fix`**: PDBFixer clean-up.
+- **B `gromatrix-fix`**: PDBFixer clean-up.
   - Mirrors OpenMM's label→author chain-ID rule.
   - Builds on a primary-conformer copy of the input.
   - Builds short loops; long gaps are split with TER.
   - Strips hydrogens, waters and additives by policy.
-- **C `gmxprep-extract`**: completeness-first selection of the sub-unit across deposited
+- **C `gromatrix-extract`**: completeness-first selection of the sub-unit across deposited
   assemblies and stoichiometric asymmetric-unit units.
   - Ligands follow the chain they physically bind.
   - Alternate conformers branch only when genuinely distinct.
   - Output: enzyme / target / complex files.
-- **D `gmxprep-relax`**: two-stage restrained OpenMM minimisation with explosion, distortion,
+- **D `gromatrix-relax`**: two-stage restrained OpenMM minimisation with explosion, distortion,
   chain-break, clash and pocket-collapse gates.
-- **E `gmxprep-afcompare`**: AlphaFold DB comparison per protein chain: RMSD (all residues and
+- **E `gromatrix-afcompare`**: AlphaFold DB comparison per protein chain: RMSD (all residues and
   confident core), TM-score (agrees with TM-align within 0.003) and Cα-lDDT.
-- **F `gmxprep-gmx`**: GROMACS matrix builder with a batch-wide forcefield lock (AMBER / CHARMM
+- **F `gromatrix-gmx`**: GROMACS matrix builder with a batch-wide forcefield lock (AMBER / CHARMM
   families).
   - One shared parameter set per ligand (acpype/GAFF2 or CGenFF), with conflict detection.
   - Atom-count and charge gates; a zero-warning `em.tpr`; named index groups; `run.sh`.
   - `verify` and `smoke` subcommands.
-- **`gmxprep-status`**: batch progress plus the next step; the hand-off contract between agent
+- **`gromatrix-status`**: batch progress plus the next step; the hand-off contract between agent
   skills.
 
 ### Claude agent toolkit

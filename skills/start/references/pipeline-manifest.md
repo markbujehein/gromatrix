@@ -1,4 +1,4 @@
-# Pipeline manifest (gmxprep-pipeline)
+# Pipeline manifest (gromatrix-pipeline)
 
 A template for one-command runs. Copy it, change `batch_dir`, `steps.fetch.ids`,
 `steps.extract.targets` and `ligands`, then preview it with `--dry-run`. Every key under `steps:`
@@ -6,9 +6,9 @@ becomes that command's flag (`max_loop: 8` → `--max-loop 8`; `true` → a bare
 the optional steps relax / afcompare / smoke).
 
 ```yaml
-# gmxprep-pipeline manifest: steps A-H from PDB IDs. Paths are relative to this file.
-#   gmxprep-pipeline --manifest examples/pipeline.yaml --dry-run          # print the exact commands
-#   gmxprep-pipeline --manifest examples/pipeline.yaml --run-md --analyze
+# gromatrix-pipeline manifest: steps A-H from PDB IDs. Paths are relative to this file.
+#   gromatrix-pipeline --manifest examples/pipeline.yaml --dry-run          # print the exact commands
+#   gromatrix-pipeline --manifest examples/pipeline.yaml --run-md --analyze
 batch_dir: ../gromatrix-work/rxr_car
 forcefield: amber
 

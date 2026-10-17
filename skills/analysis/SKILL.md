@@ -1,6 +1,6 @@
 ---
 name: analysis
-description: "Analyses finished production trajectories and explains the results (step H): periodic-boundary fixing, protein Calpha RMSD, target RMSD in the protein frame, per-residue RMSF, radius of gyration, target-enzyme H-bond persistence, drift and instability flags, plots with a README, and a matrix summary table. Use this skill ONLY inside the gromatrix:md-analyst subagent, or when the user asks to interpret or compare MD results, whether a ligand stayed bound, which H-bonds persist or how stable a complex was; the orchestrator must never run gmxprep-analyze itself. Covers gmxprep-analyze, gromatrix-report, analysis.json and honest interpretation. Not for running MD."
+description: "Analyses finished production trajectories and explains the results (step H): periodic-boundary fixing, protein Calpha RMSD, target RMSD in the protein frame, per-residue RMSF, radius of gyration, target-enzyme H-bond persistence, drift and instability flags, plots with a README, and a matrix summary table. Use this skill ONLY inside the gromatrix:md-analyst subagent, or when the user asks to interpret or compare MD results, whether a ligand stayed bound, which H-bonds persist or how stable a complex was; the orchestrator must never run gromatrix-analyze itself. Covers gromatrix-analyze, gromatrix-report, analysis.json and honest interpretation. Not for running MD."
 ---
 
 # gromatrix: trajectory analysis (step H)
@@ -12,13 +12,13 @@ tables and figures for every step. Write the final report in the format of
 `${CLAUDE_PLUGIN_ROOT}/examples/analysis_summary_example.md`; biophysical limits are in
 `${CLAUDE_PLUGIN_ROOT}/references/domain-rules.md`.
 
-Command: `gmxprep-analyze`. Full flags and the `analysis.json` schema are in `references/cli.md`.
+Command: `gromatrix-analyze`. Full flags and the `analysis.json` schema are in `references/cli.md`.
 How to read the metrics and flags, and their pitfalls, is in `references/interpretation.md`.
 
 ## Before you start
 
 ```bash
-gmxprep-status --batch-dir B
+gromatrix-status --batch-dir B
 ```
 
 Step H analyses systems whose `run.json` says `done` and that have a production trajectory
@@ -28,11 +28,11 @@ Needs GROMACS (`trjconv`, `convert-tpr`, `editconf`) plus MDAnalysis and matplot
 ## Run
 
 ```bash
-gmxprep-analyze --batch-dir B                    # every finished system
-gmxprep-analyze --batch-dir B --stride 5 --begin 10000   # every 5th frame, skip the first 10 ns
+gromatrix-analyze --batch-dir B                    # every finished system
+gromatrix-analyze --batch-dir B --stride 5 --begin 10000   # every 5th frame, skip the first 10 ns
 ```
 
-Pass the same `--deffnm` as `gmxprep-run` if the user changed it. A system whose `analysis.json` is
+Pass the same `--deffnm` as `gromatrix-run` if the user changed it. A system whose `analysis.json` is
 newer than its trajectory and was made with the same settings is not recomputed (`--force`
 overrides). `08-analysis/analysis_summary.csv` is always rebuilt from every system's results, so `--only` never
 drops rows.
@@ -69,7 +69,7 @@ drops rows.
 
 ## Hand-off
 
-Done when `gmxprep-status` shows `steps.H = "done"`. Return to the orchestrator with:
+Done when `gromatrix-status` shows `steps.H = "done"`. Return to the orchestrator with:
 - `08-analysis/analysis_summary.csv`;
 - the flags per system;
 - the plot paths;

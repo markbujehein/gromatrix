@@ -1,6 +1,6 @@
 """[H] Trajectory analysis of every finished production run.
 
-    gmxprep-analyze --batch-dir B [--only ID ...] [--deffnm md] [--gmx gmx] [--stride 1] [--begin PS] [--force]
+    gromatrix-analyze --batch-dir B [--only ID ...] [--deffnm md] [--gmx gmx] [--stride 1] [--begin PS] [--force]
                     [--hbond-distance 3.0] [--hbond-angle 150] [--hbond-min-occupancy 0.1]
                     [--ligand-rmsd-max 3.0] [--ca-rmsd-max 4.0]
 
@@ -360,7 +360,7 @@ def analyse_system(wd: Path, a: argparse.Namespace) -> dict:
     xtc = wd / f"{a.deffnm}.xtc"
     run_state = load_json(wd / "run.json")
     if not xtc.exists() or run_state.get("status") not in (None, "done"):
-        return {"id": wd.name, "status": "skipped", "reason": "production run not finished (gmxprep-run)"}
+        return {"id": wd.name, "status": "skipped", "reason": "production run not finished (gromatrix-run)"}
     old = load_json(report_p)
     if (
         not a.force
@@ -467,11 +467,11 @@ def cmd_analyze(a: argparse.Namespace) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
-        prog="gmxprep-analyze", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+        prog="gromatrix-analyze", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--batch-dir", type=Path, required=True)
     ap.add_argument("--only", nargs="+")
-    ap.add_argument("--deffnm", default="md", help="production run name used by gmxprep-run")
+    ap.add_argument("--deffnm", default="md", help="production run name used by gromatrix-run")
     ap.add_argument("--gmx", default="gmx")
     ap.add_argument("--stride", type=int, default=1, help="use every Nth frame")
     ap.add_argument("--begin", type=float, help="ps; discard frames before this time")

@@ -1,20 +1,20 @@
 ---
 name: gmx-builder
-description: "Builds GROMACS systems for a receptor by target matrix under one locked forcefield (step F): pdb2gmx topologies, shared ligand and cofactor parameters (acpype GAFF2 for AMBER, CGenFF for CHARMM), ions, box, solvent, a zero-warning em.tpr, verify and smoke test. Use this skill ONLY when structures are ready (or the user brings docked PDBs) and no systems are built yet, or a pdb2gmx, grompp, acpype or CGenFF error must be fixed, or gmxprep-status names gromatrix:gmx-builder as next. Covers the manifest, gmxprep-gmx lock, plan, build, verify and smoke, and forcefield consistency. Not for running or analysing MD."
+description: "Builds GROMACS systems for a receptor by target matrix under one locked forcefield (step F): pdb2gmx topologies, shared ligand and cofactor parameters (acpype GAFF2 for AMBER, CGenFF for CHARMM), ions, box, solvent, a zero-warning em.tpr, verify and smoke test. Use this skill ONLY when structures are ready (or the user brings docked PDBs) and no systems are built yet, or a pdb2gmx, grompp, acpype or CGenFF error must be fixed, or gromatrix-status names gromatrix:gmx-builder as next. Covers the manifest, gromatrix-gmx lock, plan, build, verify and smoke, and forcefield consistency. Not for running or analysing MD."
 ---
 
 # gromatrix: GROMACS builder (step F)
 
 Shared biophysical rules: `${CLAUDE_PLUGIN_ROOT}/references/domain-rules.md`. Compute needs are in `${CLAUDE_PLUGIN_ROOT}/references/compute-modes.md`: steps A–F need no GPU.
 
-Command: `gmxprep-gmx lock | plan | build | verify | smoke`. Full flags and outputs are in
+Command: `gromatrix-gmx lock | plan | build | verify | smoke`. Full flags and outputs are in
 `references/cli.md`. Forcefield trade-offs and ligand routing are in `references/forcefields.md`.
 Error texts are explained in `references/troubleshooting.md`.
 
 ## Before you start
 
 ```bash
-gmxprep-status --batch-dir B
+gromatrix-status --batch-dir B
 ```
 
 The lock must exist. If it doesn't, the orchestrator decides the forcefield first. Inputs are the
@@ -34,10 +34,10 @@ Copy `${CLAUDE_PLUGIN_ROOT}/examples/manifest.yaml`. Paths are relative to the m
   or an explicit-H `sdf`. This fixes the protonation state used by every system.
 
 ```bash
-gmxprep-gmx plan  --batch-dir B --manifest M    # system list = receptors + targets + every pair
-gmxprep-gmx build --batch-dir B --manifest M
-gmxprep-gmx verify --batch-dir B
-gmxprep-gmx smoke  --batch-dir B                # EM + short NVT; needs GROMACS run time
+gromatrix-gmx plan  --batch-dir B --manifest M    # system list = receptors + targets + every pair
+gromatrix-gmx build --batch-dir B --manifest M
+gromatrix-gmx verify --batch-dir B
+gromatrix-gmx smoke  --batch-dir B                # EM + short NVT; needs GROMACS run time
 ```
 
 A pair without a complex aborts `plan`/`build`. Use `--allow-incomplete` only with the user's
@@ -58,6 +58,6 @@ consent, because it breaks the matrix.
 ## Hand-off
 
 Done when `verify` is `"ok": true`, and `smoke` passed if it was run. Return to the orchestrator;
-`gmxprep-status` then names `gromatrix:execution` (MD runs) as `next`. Each system also has a
+`gromatrix-status` then names `gromatrix:execution` (MD runs) as `next`. Each system also has a
 dependency-free `run.sh` (em → nvt → npt → md), for users who run without gromatrix installed.
 `system.json` records `target_resname` / `target_residues` for step H.

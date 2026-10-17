@@ -1,6 +1,6 @@
 """Batch status: the hand-off contract between the gromatrix agent skills.
 
-    gmxprep-status --batch-dir B
+    gromatrix-status --batch-dir B
 
 Reads only the artefacts each step writes (no heavy imports, no network) and
 prints one JSON line: the forcefield lock, a done/partial/pending verdict for
@@ -141,42 +141,42 @@ def _next(b: Path, lock: dict | None, per_id: dict, systems: dict, compute: dict
     if lock is None:
         return {
             "skill": ORCHESTRATOR,
-            "command": f"gmxprep-gmx lock --batch-dir {b} --forcefield <amber|charmm|...>",
+            "command": f"gromatrix-gmx lock --batch-dir {b} --forcefield <amber|charmm|...>",
             "why": "no forcefield lock yet; decide it before anything family-dependent (D, F)",
         }
     if not per_id and not systems["built"]:
-        return {"skill": STRUCTURE_SKILL, "command": f"gmxprep-fetch --batch-dir {b} --ids <IDs>", "why": "empty batch"}
+        return {"skill": STRUCTURE_SKILL, "command": f"gromatrix-fetch --batch-dir {b} --ids <IDs>", "why": "empty batch"}
     todo = lambda key: sorted(k for k, v in per_id.items() if not v.get(key))  # noqa: E731
     if systems["built"]:
         return _next_md(b, systems, compute)
     if todo("fixed"):
         return {
             "skill": STRUCTURE_SKILL,
-            "command": f"gmxprep-fix --batch-dir {b}",
+            "command": f"gromatrix-fix --batch-dir {b}",
             "why": f"unfixed: {todo('fixed')[:5]}",
         }
     if todo("unit"):
         return {
             "skill": STRUCTURE_SKILL,
-            "command": f"gmxprep-extract --batch-dir {b} --targets <RES>",
+            "command": f"gromatrix-extract --batch-dir {b} --targets <RES>",
             "why": f"no unit selected: {todo('unit')[:5]}",
         }
     if todo("relax"):
         return {
             "skill": VALIDATE_SKILL,
-            "command": f"gmxprep-relax --batch-dir {b}",
+            "command": f"gromatrix-relax --batch-dir {b}",
             "why": f"not relaxed: {todo('relax')[:5]}",
         }
     if todo("af"):
         return {
             "skill": VALIDATE_SKILL,
-            "command": f"gmxprep-afcompare --batch-dir {b}",
+            "command": f"gromatrix-afcompare --batch-dir {b}",
             "why": f"no AlphaFold comparison: {todo('af')[:5]}",
         }
     if not systems["built"]:
         return {
             "skill": GMX_SKILL,
-            "command": f"gmxprep-gmx build --batch-dir {b} --manifest <manifest.yaml>",
+            "command": f"gromatrix-gmx build --batch-dir {b} --manifest <manifest.yaml>",
             "why": "structures validated; no GROMACS systems built yet",
         }
     return _next_md(b, systems, compute)
@@ -186,14 +186,14 @@ def _next_md(b: Path, systems: dict, compute: dict | None = None) -> dict:
     """F (smoke) -> G -> H, once systems exist. G and H name the subagent that must run them."""
     runs = systems["run"]
     if systems["smoke_ok"] + systems["smoke_failed"] < systems["built"] and not systems["run_done"]:
-        return {"skill": GMX_SKILL, "command": f"gmxprep-gmx smoke --batch-dir {b}", "why": "systems not smoke-tested"}
+        return {"skill": GMX_SKILL, "command": f"gromatrix-gmx smoke --batch-dir {b}", "why": "systems not smoke-tested"}
     if systems["smoke_failed"] and systems["smoke_failed"] == systems["built"]:
-        return {"skill": GMX_SKILL, "command": f"gmxprep-gmx verify --batch-dir {b}", "why": "every smoke test failed"}
+        return {"skill": GMX_SKILL, "command": f"gromatrix-gmx verify --batch-dir {b}", "why": "every smoke test failed"}
     if runs.get("failed"):
         return {
             "skill": RUN_SKILL,
             "agent": MD_RUNNER,
-            "command": f"gmxprep-run --batch-dir {b} --only {' '.join(runs['failed'][:5])}",
+            "command": f"gromatrix-run --batch-dir {b} --only {' '.join(runs['failed'][:5])}",
             "why": f"MD failed for {runs['failed'][:5]}: read 06-systems/<id>/run.json, fix, rerun",
         }
     if systems["run_done"] + systems["smoke_failed"] < systems["built"]:
@@ -201,7 +201,7 @@ def _next_md(b: Path, systems: dict, compute: dict | None = None) -> dict:
             return {
                 "skill": RUN_SKILL,
                 "agent": MD_RUNNER,
-                "command": f"gmxprep-status --batch-dir {b}",
+                "command": f"gromatrix-status --batch-dir {b}",
                 "why": f"MD running for {runs['running'][:5]}; check again later",
             }
         if compute is None and not runs:  # where MD runs is the user's call; ask once, then it is stored
@@ -215,33 +215,33 @@ def _next_md(b: Path, systems: dict, compute: dict | None = None) -> dict:
         return {
             "skill": RUN_SKILL,
             "agent": MD_RUNNER,
-            "command": f"gmxprep-run --batch-dir {b} " + " ".join(run_args(compute) if compute else []),
-            "why": "systems ready; MD not run or not finished (gmxprep-run resumes from checkpoints)",
+            "command": f"gromatrix-run --batch-dir {b} " + " ".join(run_args(compute) if compute else []),
+            "why": "systems ready; MD not run or not finished (gromatrix-run resumes from checkpoints)",
         }
     if systems["analysis_failed"]:
         return {
             "skill": ANALYSIS_SKILL,
             "agent": MD_ANALYST,
-            "command": f"gmxprep-analyze --batch-dir {b} --only {' '.join(systems['analysis_failed'][:5])}",
+            "command": f"gromatrix-analyze --batch-dir {b} --only {' '.join(systems['analysis_failed'][:5])}",
             "why": f"analysis failed for {systems['analysis_failed'][:5]}",
         }
     if systems["analysed"] < systems["run_done"]:
         return {
             "skill": ANALYSIS_SKILL,
             "agent": MD_ANALYST,
-            "command": f"gmxprep-analyze --batch-dir {b}",
+            "command": f"gromatrix-analyze --batch-dir {b}",
             "why": "trajectories not analysed yet",
         }
     return {
         "skill": None,
-        "command": f"gmxprep-gmx verify --batch-dir {b}",
+        "command": f"gromatrix-gmx verify --batch-dir {b}",
         "why": "pipeline complete (A-H); verify and write the final report from 08-analysis/analysis_summary.csv",
     }
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
-        prog="gmxprep-status", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+        prog="gromatrix-status", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--batch-dir", type=Path, required=True)
     a = ap.parse_args(argv)
@@ -251,7 +251,7 @@ def main(argv: list[str] | None = None) -> int:
                 {
                     "ok": False,
                     "error": f"{a.batch_dir} does not exist",
-                    "next": {"skill": STRUCTURE_SKILL, "command": f"gmxprep-fetch --batch-dir {a.batch_dir} ..."},
+                    "next": {"skill": STRUCTURE_SKILL, "command": f"gromatrix-fetch --batch-dir {a.batch_dir} ..."},
                 }
             )
         )

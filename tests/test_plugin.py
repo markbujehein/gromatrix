@@ -30,13 +30,13 @@ def test_the_repository_is_a_valid_plugin(capsys):
     assert out["skills"] == ["analysis", "execution", "gmx-builder", "start", "structure-prep", "validate"]
 
 
-# The commands each stage skill may tell the agent to run (plus gmxprep-status, the hand-off).
+# The commands each stage skill may tell the agent to run (plus gromatrix-status, the hand-off).
 STAGE_COMMANDS = {
-    "structure-prep": {"gmxprep-fetch", "gmxprep-fix", "gmxprep-extract"},
-    "validate": {"gmxprep-relax", "gmxprep-afcompare"},
-    "gmx-builder": {"gmxprep-gmx"},
-    "execution": {"gmxprep-run"},
-    "analysis": {"gmxprep-analyze"},
+    "structure-prep": {"gromatrix-fetch", "gromatrix-fix", "gromatrix-extract"},
+    "validate": {"gromatrix-relax", "gromatrix-afcompare"},
+    "gmx-builder": {"gromatrix-gmx"},
+    "execution": {"gromatrix-run"},
+    "analysis": {"gromatrix-analyze"},
 }
 
 
@@ -46,18 +46,17 @@ def test_stage_skills_only_run_their_own_commands():
         d = ROOT / "skills" / skill
         for md in [d / "SKILL.md", *sorted((d / "references").glob("*.md"))]:
             blocks = re.findall(r"```.*?```", md.read_text(), re.S)
-            used = set(re.findall(r"\bgmxprep-[a-z]+", "\n".join(blocks)))
-            used |= set(re.findall(r"\bgromatrix-(?:report|compute)", "\n".join(blocks)))  # shared helpers
-            assert used - {"gromatrix-report", "gromatrix-compute"} <= own | {"gmxprep-status"}, f"{md.name}: {used}"
+            used = set(re.findall(r"\bgromatrix-[a-z]+", "\n".join(blocks)))
+            assert used - {"gromatrix-report", "gromatrix-compute"} <= own | {"gromatrix-status"}, f"{md.name}: {used}"
 
 
 def test_orchestrator_never_runs_steps_g_and_h_itself():
     """The long and noisy steps are delegated: no command block of the orchestrator runs them."""
     text = (ROOT / "skills" / "start" / "SKILL.md").read_text()
     blocks = "\n".join(re.findall(r"```.*?```", text, re.S))
-    assert "gmxprep-run" not in blocks and "gmxprep-analyze" not in blocks and "--run-md" not in blocks
+    assert "gromatrix-run" not in blocks and "gromatrix-analyze" not in blocks and "--run-md" not in blocks
     assert 'subagent_type = "gromatrix:md-runner"' in text and "gromatrix:md-analyst" in text
-    assert "never run `gmxprep-run`" in text
+    assert "never run `gromatrix-run`" in text
 
 
 def test_agents_hand_back_json_only_and_match_status_names():

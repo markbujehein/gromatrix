@@ -1,6 +1,6 @@
 """[C] Sub-unit extraction with spatial ligand mapping and completeness scoring.
 
-    gmxprep-extract --batch-dir B [--in fixed] [--out units] [--ids 1ABC ...]
+    gromatrix-extract --batch-dir B [--in fixed] [--out units] [--ids 1ABC ...]
                     [--targets LIG[,RES][@ID]] [--target-chains X[,Y][@ID]] [--expect RES[:n],...]
                     [--assembly auto|none|N] [--ligand-cutoff 4.5] [--contact-cutoff 5.0]
                     [--min-contacts 10] [--max-chains 12] [--unit CANDIDATE_ID] [--allow-incomplete]
@@ -497,7 +497,7 @@ def extract_one(pdb: Path, out_root: Path, a) -> dict:
     gaps = meta.get("fix", {}).get("gaps", [])
     warnings: list[str] = []
     if not meta_p.exists():
-        warnings.append("no .meta.json (run gmxprep-fix first): assemblies unknown, using AU units only")
+        warnings.append("no .meta.json (run gromatrix-fix first): assemblies unknown, using AU units only")
 
     au = load_au(pdb)
     targets = _scoped(a.targets, pid)
@@ -651,7 +651,7 @@ def extract_one(pdb: Path, out_root: Path, a) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
-        prog="gmxprep-extract", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+        prog="gromatrix-extract", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--batch-dir", type=Path, required=True)
     ap.add_argument("--in", dest="indir", default=layout.FIXED)

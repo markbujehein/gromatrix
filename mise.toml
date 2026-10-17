@@ -1,0 +1,27 @@
+min_version = "2026.1.0"
+
+[tools]
+pixi = { version = "0.82.0", lazy = true }   # same version CI uses; installed on first use
+
+[env]
+_.path = [".pixi/envs/md/bin"]               # gromatrix-*, gmx and acpype on PATH once `mise run setup` has run
+
+[tasks.setup]
+description = "Build the md environment (GROMACS, OpenMM, acpype, MDAnalysis)"
+run = "pixi install -e md"
+
+[tasks.test]
+description = "Offline test suite"
+run = "pixi run -e md pytest -q -m 'not slow' tests"
+
+[tasks.lint]
+description = "ruff check + format check"
+run = "pixi run lint"
+
+[tasks.plugin]
+description = "Validate plugin.json, marketplace.json, skills and agents"
+run = "pixi run -e skills check-plugin"
+
+[tasks.status]
+description = "Batch status: mise run status path/to/batch"
+run = "pixi run -e md gromatrix-status --batch-dir"

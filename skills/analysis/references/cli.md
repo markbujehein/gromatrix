@@ -1,9 +1,9 @@
 # CLI reference: step H
 
-## gmxprep-analyze
+## gromatrix-analyze
 
 ```
-gmxprep-analyze --batch-dir B [--only ID ...] [--deffnm md] [--gmx gmx] [--stride 1] [--begin PS] [--force]
+gromatrix-analyze --batch-dir B [--only ID ...] [--deffnm md] [--gmx gmx] [--stride 1] [--begin PS] [--force]
                 [--hbond-distance 3.0] [--hbond-angle 150] [--hbond-min-occupancy 0.1]
                 [--ligand-rmsd-max 3.0] [--ca-rmsd-max 4.0]
 ```

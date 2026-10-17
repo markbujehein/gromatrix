@@ -64,7 +64,7 @@ Alone systems: ENZ1 apo, Cα RMSD 2.2 Å · LIGX in solution, RMSD 1.8 Å.
 
 ## What is left
 
-`gmxprep-status` reports the batch complete. Suggested next steps: repeat with three replicas, extend
+`gromatrix-status` reports the batch complete. Suggested next steps: repeat with three replicas, extend
 the complex to 100 ns, and compare the two conformers with free-energy methods if a ranking is needed.
 
 Figures and per-step tables: `09-reports/README.md`. Per-system plots and their guides:

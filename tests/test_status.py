@@ -27,7 +27,7 @@ def test_next_skill_follows_pipeline_state(tmp_path):
     _w(b / "05-alphafold" / "1ABC.json", {"A": {"tm_score": 0.95, "status": "ok"}})
     assert batch_status(b)["next"]["skill"] == "gromatrix:gmx-builder"  # build
     _w(b / "06-systems" / "E1" / "system.json", {"status": "ok"})
-    assert batch_status(b)["next"]["command"].startswith("gmxprep-gmx smoke")
+    assert batch_status(b)["next"]["command"].startswith("gromatrix-gmx smoke")
     _w(b / "06-systems" / "E1" / "system.json", {"status": "ok", "smoke": {"ok": True}})
     st = batch_status(b)
     # G: where MD runs is asked once and then stored; until then the orchestrator is next
@@ -76,6 +76,6 @@ def test_dead_runner_and_smoke_failures(tmp_path):
     # A runner killed with -9 leaves 'running' behind; status must not wait for it forever.
     _w(tmp_path / "06-systems" / "A" / "run.json", {"status": "running", "host": socket.gethostname(), "pid": 2**22 + 7})
     st = batch_status(tmp_path)
-    assert st["systems"]["run"] == {"interrupted": ["A"]} and st["next"]["command"].startswith("gmxprep-run")
+    assert st["systems"]["run"] == {"interrupted": ["A"]} and st["next"]["command"].startswith("gromatrix-run")
     _w(tmp_path / "06-systems" / "A" / "run.json", {"status": "running", "host": socket.gethostname(), "pid": os.getpid()})
     assert "running" in batch_status(tmp_path)["next"]["why"]

@@ -1,6 +1,6 @@
 """[E] Compare relaxed experimental sub-units with AlphaFold DB predictions.
 
-    gmxprep-afcompare --batch-dir B [--in relaxed] [--ids 1ABC ...]
+    gromatrix-afcompare --batch-dir B [--in relaxed] [--ids 1ABC ...]
                       [--files enzyme.pdb target_*.pdb] [--uniprot A:P12345,B:Q67890[@ID]]
                       [--plddt-min 70] [--min-length 30] [--tm-min 0.8] [--lddt-min 0.7]
                       [--out 05-alphafold/af_report.csv] [--afdb-dir 05-alphafold-cache]
@@ -293,7 +293,7 @@ def _scoped_map(spec: str | None, pid: str) -> dict[str, str]:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
-        prog="gmxprep-afcompare", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+        prog="gromatrix-afcompare", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--batch-dir", type=Path, required=True)
     ap.add_argument("--in", dest="indir", default=layout.RELAXED)

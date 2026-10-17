@@ -20,16 +20,16 @@ test = ["pytest>=7"]
 analysis = ["MDAnalysis>=2.7", "matplotlib>=3.8"]  # step H
 
 [project.scripts]
-gmxprep-gmx = "gromatrix.gmx_prep:main"
-gmxprep-status = "gromatrix.status:main"
-gmxprep-fetch = "gromatrix.fetch:main"
-gmxprep-fix = "gromatrix.fix:main"
-gmxprep-extract = "gromatrix.extract:main"
-gmxprep-relax = "gromatrix.relax:main"
-gmxprep-afcompare = "gromatrix.afdb:main"
-gmxprep-run = "gromatrix.run:main"
-gmxprep-analyze = "gromatrix.analyze:main"
-gmxprep-pipeline = "gromatrix.pipeline:main"
+gromatrix-gmx = "gromatrix.gmx_prep:main"
+gromatrix-status = "gromatrix.status:main"
+gromatrix-fetch = "gromatrix.fetch:main"
+gromatrix-fix = "gromatrix.fix:main"
+gromatrix-extract = "gromatrix.extract:main"
+gromatrix-relax = "gromatrix.relax:main"
+gromatrix-afcompare = "gromatrix.afdb:main"
+gromatrix-run = "gromatrix.run:main"
+gromatrix-analyze = "gromatrix.analyze:main"
+gromatrix-pipeline = "gromatrix.pipeline:main"
 gromatrix-report = "gromatrix.report:main"
 gromatrix-compute = "gromatrix.compute:main"
 

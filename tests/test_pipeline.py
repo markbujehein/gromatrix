@@ -1,4 +1,4 @@
-"""gmxprep-pipeline: planning, the generated step-F manifest, fail-fast."""
+"""gromatrix-pipeline: planning, the generated step-F manifest, fail-fast."""
 
 import json
 from pathlib import Path
@@ -36,10 +36,10 @@ def test_dry_run_plan_from_pdb_ids(tmp_path, capsys):
     b = str((tmp_path / "B").resolve())
     cmds = {(s["stage"], s["command"].split()[0 if s["stage"] != "F" else 1]): s for s in plan}
     assert [s["stage"] for s in plan] == ["lock", "A", "B", "C", "D", "E", "F", "F", "F", "G", "H"]
-    assert plan[0]["command"] == f"gmxprep-gmx lock --batch-dir {b} --forcefield amber"
-    assert cmds[("A", "gmxprep-fetch")]["command"].endswith("--ids 1XVP")
-    assert cmds[("C", "gmxprep-extract")]["command"].endswith("--targets CID")
-    assert "skip" not in cmds[("D", "gmxprep-relax")] and "skip-afdb" in cmds[("E", "gmxprep-afcompare")]["skip"]
+    assert plan[0]["command"] == f"gromatrix-gmx lock --batch-dir {b} --forcefield amber"
+    assert cmds[("A", "gromatrix-fetch")]["command"].endswith("--ids 1XVP")
+    assert cmds[("C", "gromatrix-extract")]["command"].endswith("--targets CID")
+    assert "skip" not in cmds[("D", "gromatrix-relax")] and "skip-afdb" in cmds[("E", "gromatrix-afcompare")]["skip"]
     assert "<B/00-config/manifest.generated.yaml>" in plan[6]["command"]  # derived after C/D
     assert plan[9]["command"].endswith("--threads 8") and "skip" not in plan[9]
     assert "--analyze" in plan[10]["skip"]
@@ -172,7 +172,7 @@ def test_call_parses_result_and_passes_progress(tmp_path, capsys, monkeypatch):
 
     mod.main = main
     monkeypatch.setitem(__import__("sys").modules, "fake_step", mod)
-    out = pipeline.call(pipeline.Step("G", "gmxprep-run", "fake_step", []))
+    out = pipeline.call(pipeline.Step("G", "gromatrix-run", "fake_step", []))
     assert out == {"ok": True, "done": ["S1"]}
     assert json.loads(capsys.readouterr().out)["progress_pct"] == 45  # forwarded live
 
