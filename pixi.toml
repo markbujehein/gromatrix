@@ -48,14 +48,13 @@ fmt = { cmd = "ruff format src tests scripts benchmarks && ruff check --fix src 
 mdanalysis = ">=2.7"
 matplotlib-base = ">=3.8"
 
-# Skill packaging needs only Python + PyYAML (tiny env, used by CI and the release workflow).
+# Plugin validation needs only Python + PyYAML (tiny env, used by CI).
 [feature.skills.dependencies]
 python = "3.12.*"
 pyyaml = ">=6"
 
 [feature.skills.tasks]
-package-skills = { cmd = "python scripts/package_skills.py", description = "validate + zip .claude/skills/* into dist/skills/" }
-check-skills = { cmd = "python scripts/package_skills.py --check", description = "validate skills only" }
+check-plugin = { cmd = "python scripts/check_plugin.py", description = "validate plugin.json, marketplace.json, skills/, agents/ and ${CLAUDE_PLUGIN_ROOT} paths" }
 
 # Python versions: 3.12 is canonical (PRs); 3.10/3.13 are the compatibility edges
 # of `requires-python = ">=3.10"`, tested only on pushes to main/dev.

@@ -1,0 +1,11 @@
+{
+  "name": "gromatrix",
+  "displayName": "gromatrix",
+  "version": "0.2.0",
+  "description": "From PDB IDs or docked poses to GROMACS simulations and analysis: structure prep, validation, system builds, MD runs and trajectory analysis for receptor x target matrices, with one forcefield per batch.",
+  "author": { "name": "Mark Sørensen" },
+  "homepage": "https://github.com/markbujehein/gromatrix",
+  "repository": "https://github.com/markbujehein/gromatrix",
+  "license": "MIT",
+  "keywords": ["molecular-dynamics", "gromacs", "openmm", "bioinformatics", "structural-biology"]
+}

@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,6 +7,9 @@ name = "gromatrix"
 version = "0.2.0"
 description = "PDB -> GROMACS enzyme x target simulation matrix with a batch-locked forcefield"
 requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Mark Sørensen" }]
 classifiers = ["Development Status :: 3 - Alpha"]
 dependencies = ["pyyaml>=6", "numpy>=1.24", "scipy>=1.10", "biopython>=1.80"]
 # openmm + pdbfixer are needed for steps B and D; tmtools is optional (cross-check only)

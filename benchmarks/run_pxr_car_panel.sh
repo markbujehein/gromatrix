@@ -11,4 +11,4 @@ step B gmxprep-fix --batch-dir "$B" > "$B/fix.json" || true
 step C python benchmarks/pick_targets.py "$B"      # picks each entry's largest drug-like HET, runs step C
 step D gmxprep-relax --batch-dir "$B" --files enzyme.pdb "complex_*.pdb" > "$B/relax.json" || true
 step E gmxprep-afcompare --batch-dir "$B" > "$B/af.json" || true
-echo "results in $B (fix.json, extract.json, relax.json, af_report.csv, timings.txt)"
+echo "results in $B (fix.json, extract.json, relax.json, 05-alphafold/af_report.csv, timings.txt)"

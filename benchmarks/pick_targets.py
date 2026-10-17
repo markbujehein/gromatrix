@@ -16,7 +16,7 @@ from gromatrix.structure import POLYMER_RES
 
 B = Path(sys.argv[1])
 targets, info = [], {}
-for pdb in sorted((B / "fixed").glob("*.pdb")):
+for pdb in sorted((B / "02-fixed").glob("*.pdb")):
     pid = pdb.stem
     sizes = Counter()
     seen = set()

@@ -1,7 +1,8 @@
 name: Release
 
-# Push a version tag on main (git tag v0.2.0 && git push origin v0.2.0) to publish a release
-# with one installable .zip per agent skill plus SHA256SUMS.
+# Push a version tag on main (git tag v0.2.0 && git push origin v0.2.0) to publish a release.
+# The plugin installs straight from the repository (/plugin marketplace add markbujehein/gromatrix@v0.2.0),
+# so the release carries no archives: it validates the plugin and publishes generated notes.
 on:
   push:
     tags: ["v*.*.*"]
@@ -10,8 +11,8 @@ permissions:
   contents: read
 
 jobs:
-  skills-release:
-    name: Package skills and publish release
+  plugin-release:
+    name: Validate the plugin and publish release
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -33,20 +34,13 @@ jobs:
           if [ "${GITHUB_REF_NAME#v}" != "$version" ]; then
             echo "::error::tag ${GITHUB_REF_NAME} does not match pyproject version ${version}"; exit 1
           fi
-      - name: Validate and package skills
-        run: pixi run --locked -e skills package-skills
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: gromatrix-skills-${{ github.ref_name }}
-          path: dist/skills/
+      - name: Validate the plugin
+        run: pixi run --locked -e skills check-plugin
       - name: Create (or update) the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          assets=(dist/skills/*.zip dist/skills/SHA256SUMS)
-          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
-          else
-            gh release create "$GITHUB_REF_NAME" "${assets[@]}" --repo "$GITHUB_REPOSITORY" \
+          if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
               --title "gromatrix ${GITHUB_REF_NAME}" --generate-notes --verify-tag
           fi

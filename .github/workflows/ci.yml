@@ -38,8 +38,8 @@ jobs:
           cache-write: ${{ env.CACHE_WRITE }}
       - run: pixi run --locked -e lint lint
 
-  skills:
-    name: Agent skills (validate + package)
+  plugin:
+    name: Claude plugin (validate)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -53,13 +53,7 @@ jobs:
           locked: true
           cache: true
           cache-write: ${{ env.CACHE_WRITE }}
-      - run: pixi run --locked -e skills package-skills
-      - name: Upload skill zips (installable build artifacts)
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: gromatrix-skills
-          path: dist/skills/
-          retention-days: 30
+      - run: pixi run --locked -e skills check-plugin
 
   test:
     name: Tests (${{ matrix.environment }})

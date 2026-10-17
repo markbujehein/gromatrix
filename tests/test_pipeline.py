@@ -186,12 +186,12 @@ def test_target_residues_ranges():
     assert target_residues(prot, None) == []
 
 
-def test_examples_manifest_is_valid_and_shipped_with_the_skill():
+def test_examples_manifest_is_valid_and_shipped_with_the_orchestrator_skill():
     root = Path(__file__).resolve().parents[1]
     ex = (root / "examples" / "pipeline.yaml").read_text()
     raw = yaml.safe_load(ex)
     assert raw["batch_dir"] and "fetch" in raw["steps"]
-    ref = (root / ".claude" / "skills" / "gromatrix" / "references" / "pipeline-manifest.md").read_text()
+    ref = (root / "skills" / "start" / "references" / "pipeline-manifest.md").read_text()
     assert ex in ref  # the skill zip carries the same template (no clone needed)
 
 

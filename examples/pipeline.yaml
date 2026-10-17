@@ -1,7 +1,7 @@
 # gmxprep-pipeline manifest: steps A-H from PDB IDs. Paths are relative to this file.
 #   gmxprep-pipeline --manifest examples/pipeline.yaml --dry-run          # print the exact commands
 #   gmxprep-pipeline --manifest examples/pipeline.yaml --run-md --analyze
-batch_dir: ../work/rxr_car
+batch_dir: ../gromatrix-work/rxr_car
 forcefield: amber
 
 # Step C keeps only native (crystal) pairs, so the generated step-F matrix is usually
