@@ -9,7 +9,10 @@ prose. Design: docs/superpowers/specs/2026-10-17-result-envelope-design.md.
 from __future__ import annotations
 
 import argparse
+import functools
 import json
+import os
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -155,14 +158,30 @@ def stub_large(rec: dict, command: str, out_dir: Path, limit: int = BRIEF_LIMIT)
     }
     if not big:
         return rec
-    path = Path(out_dir) / f"result-{command}.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write(path, json.dumps({k: rec[k] for k in big}, indent=1))
+    path = Path(out_dir) / f"result-{command}-{time.time_ns()}-{os.getpid()}.json"  # one file per call
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write(path, json.dumps({k: rec[k] for k in big}, indent=1))
+    except OSError:  # a stub must never cost the result: print the full value instead
+        return rec
     return {k: {"stub": True, "file": str(path), "chars": big[k]} if k in big else v for k, v in rec.items()}
 
 
 def add_full_flag(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--full", action="store_true", help="print large values in full instead of a stub + file")
+
+
+def guarded(main):
+    """Decorator for a command's main(): any exception becomes a failed result line, never a traceback."""
+
+    @functools.wraps(main)
+    def wrapper(*args, **kwargs):
+        try:
+            return main(*args, **kwargs)
+        except Exception as e:  # SystemExit (argparse) is not an Exception and passes through
+            return finish(from_exception(e))
+
+    return wrapper
 
 
 def finish(

@@ -134,6 +134,7 @@ def fetch_one(pid: str, fmt: str, cache: Cache, check_updates: bool) -> dict:
     return out
 
 
+@result.guarded
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="gromatrix-fetch", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter

@@ -517,14 +517,15 @@ def cmd_plan(a) -> dict:
 
 def build_facts(stamps: dict[str, dict]) -> dict:
     """Per-system figures from the system.json stamps (only keys the stamp really holds)."""
-    facts: dict[str, dict] = {"atoms": {}, "solute_charge": {}, "ions": {}}
+    # input_ions: crystallographic ions kept from the input PDB, not the ions genion added
+    facts: dict[str, dict] = {"atoms": {}, "solute_charge": {}, "input_ions": {}}
     for sid, st in stamps.items():
         if "atoms" in st:
             facts["atoms"][sid] = st["atoms"]
         if "solute_charge" in st:
             facts["solute_charge"][sid] = st["solute_charge"]
         if "ions" in st.get("components", {}):
-            facts["ions"][sid] = len(st["components"]["ions"])
+            facts["input_ions"][sid] = len(st["components"]["ions"])
     return {k: v for k, v in facts.items() if v}
 
 

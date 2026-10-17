@@ -291,6 +291,7 @@ def _scoped_map(spec: str | None, pid: str) -> dict[str, str]:
     return out
 
 
+@result.guarded
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="gromatrix-afcompare", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter

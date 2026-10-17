@@ -650,6 +650,7 @@ def extract_one(pdb: Path, out_root: Path, a) -> dict:
     }
 
 
+@result.guarded
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="gromatrix-extract", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter

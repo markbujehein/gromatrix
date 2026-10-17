@@ -317,6 +317,7 @@ def fix_one(path: Path, out_dir: Path, args) -> dict:
     }
 
 
+@result.guarded
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="gromatrix-fix", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter

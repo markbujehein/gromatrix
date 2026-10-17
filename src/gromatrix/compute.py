@@ -83,6 +83,7 @@ def run_args(cfg: dict) -> list[str]:
     return a
 
 
+@result.guarded
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="gromatrix-compute", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
