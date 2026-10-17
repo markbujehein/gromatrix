@@ -1,0 +1,14 @@
+# Codecov: report coverage; fail a check only on a clear regression.
+coverage:
+  status:
+    project:
+      default:
+        target: auto      # compare with the base commit
+        threshold: 2%     # allow small dips
+    patch:
+      default:
+        target: 60%
+        informational: true   # shown on the PR, never blocks it
+comment:
+  layout: "condensed_header, diff, files"
+  require_changes: true
