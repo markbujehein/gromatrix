@@ -285,6 +285,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument("--pocket-cutoff", type=float, default=5.0, help="Å around HETs kept restrained in stage 2")
     ap.add_argument("--platform", default="auto")
+    result.add_full_flag(ap)
     a = ap.parse_args(argv)
 
     try:
@@ -334,8 +335,8 @@ def main(argv: list[str] | None = None) -> int:
                 indent=1,
             )
         )
-    print(json.dumps({"ok": not failed, "family": family, "relaxed": results, "failed": failed}))
-    return 0 if not failed else 1
+    out = {"ok": not failed, "family": family, "relaxed": results, "failed": failed}
+    return result.finish(out, command="relax", out_dir=a.batch_dir / layout.CONFIG, full=a.full)
 
 
 if __name__ == "__main__":

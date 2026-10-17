@@ -256,7 +256,7 @@ def main(argv: list[str] | None = None) -> int:
                 next={"skill": STRUCTURE_SKILL, "command": f"gromatrix-fetch --batch-dir {a.batch_dir} ..."},
             )
         )
-    print(json.dumps(batch_status(a.batch_dir)))
+    print(json.dumps(batch_status(a.batch_dir)))  # `next` is the contract here: no envelope reordering
     return 0
 
 

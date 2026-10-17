@@ -22,7 +22,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import re
 import sys
 from pathlib import Path
@@ -150,6 +149,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--format", default="cif", choices=["cif", "pdb", "both"])
     ap.add_argument("--out", default=layout.RAW)
     ap.add_argument("--check-updates", action="store_true", help="refetch entries revised since caching")
+    result.add_full_flag(ap)
     a = ap.parse_args(argv)
 
     try:
@@ -185,8 +185,7 @@ def main(argv: list[str] | None = None) -> int:
             for s in ("downloaded", "cached", "repaired", "updated")
         },
     }
-    print(json.dumps(summary))
-    return 0 if not failed else 1
+    return result.finish(summary, command="fetch", out_dir=a.batch_dir / layout.CONFIG, full=a.full)
 
 
 if __name__ == "__main__":

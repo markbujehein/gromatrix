@@ -675,6 +675,7 @@ def main(argv: list[str] | None = None) -> int:
         help="target ligands with alternate conformers: branch only distinct ones (auto), "
         "always branch, or always use the primary conformer",
     )
+    result.add_full_flag(ap)
     a = ap.parse_args(argv)
 
     indir, outdir = a.batch_dir / a.indir, a.batch_dir / a.out
@@ -692,8 +693,8 @@ def main(argv: list[str] | None = None) -> int:
             (outdir / p.stem.upper()).mkdir(parents=True, exist_ok=True)
             (outdir / p.stem.upper() / "error.txt").write_text(traceback.format_exc())
             failed.append({"id": p.stem.upper(), "error": f"{type(e).__name__}: {str(e)[:400]}"})
-    print(json.dumps({"ok": not failed, "units": results, "failed": failed}))
-    return 0 if not failed else 1
+    out = {"ok": not failed, "units": results, "failed": failed}
+    return result.finish(out, command="extract", out_dir=a.batch_dir / layout.CONFIG, full=a.full)
 
 
 if __name__ == "__main__":

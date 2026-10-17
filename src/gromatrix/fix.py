@@ -337,6 +337,7 @@ def main(argv: list[str] | None = None) -> int:
         default=0.5,
         help="Å; symmetry-corrected RMSD at which alternate conformers count as distinct poses",
     )
+    result.add_full_flag(ap)
     a = ap.parse_args(argv)
 
     indir, outdir = a.batch_dir / a.indir, a.batch_dir / a.out
@@ -354,8 +355,8 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as e:
             (outdir / f"{p.stem.upper()}.error.txt").write_text(traceback.format_exc())
             failed.append({"id": p.stem.upper(), "error": f"{type(e).__name__}: {str(e)[:300]}"})
-    print(json.dumps({"ok": not failed, "fixed": results, "failed": failed}))
-    return 0 if not failed else 1
+    out = {"ok": not failed, "fixed": results, "failed": failed}
+    return result.finish(out, command="fix", out_dir=a.batch_dir / layout.CONFIG, full=a.full)
 
 
 if __name__ == "__main__":
