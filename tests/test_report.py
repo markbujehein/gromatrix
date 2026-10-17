@@ -68,3 +68,21 @@ def test_analysis_readme_explains_each_plot_and_warns_when_short():
 def test_report_cli_reports_missing_batch(tmp_path, capsys):
     assert report.main(["--batch-dir", str(tmp_path / "nope")]) == 1
     assert json.loads(capsys.readouterr().out)["ok"] is False
+
+
+def test_compute_choice_round_trips_and_cpu_only_has_no_gpu_flag(tmp_path, capsys):
+    from gromatrix import compute
+
+    b = str(tmp_path)
+    assert compute.main(["--batch-dir", b, "run-args"]) == 1  # nothing chosen yet
+    capsys.readouterr()
+    assert compute.main(["--batch-dir", b, "set", "--mode", "local", "--threads", "6"]) == 0
+    capsys.readouterr()
+    compute.main(["--batch-dir", b, "run-args"])
+    out = json.loads(capsys.readouterr().out)
+    assert out["args"] == ["--threads", "6", "--background"] and out["submit"] is False
+    compute.main(["--batch-dir", b, "set", "--mode", "remote", "--time", "48:00:00", "--partition", "gpu"])
+    capsys.readouterr()
+    compute.main(["--batch-dir", b, "run-args"])
+    out = json.loads(capsys.readouterr().out)
+    assert out["args"][:3] == ["--slurm", "--time", "48:00:00"] and "--partition" in out["args"] and out["submit"] is False

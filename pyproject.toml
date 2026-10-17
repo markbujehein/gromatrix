@@ -28,6 +28,7 @@ gmxprep-run = "gromatrix.run:main"
 gmxprep-analyze = "gromatrix.analyze:main"
 gmxprep-pipeline = "gromatrix.pipeline:main"
 gromatrix-report = "gromatrix.report:main"
+gromatrix-compute = "gromatrix.compute:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
