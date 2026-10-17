@@ -11,7 +11,7 @@ import os
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 USER_AGENT = "gromatrix/0.2 (+https://github.com/markbujehein/gromatrix)"
@@ -29,7 +29,7 @@ def _retry_after(value: str | None, default: float) -> float:
         from email.utils import parsedate_to_datetime
 
         try:
-            wait = (parsedate_to_datetime(value) - datetime.now(timezone.utc)).total_seconds()
+            wait = (parsedate_to_datetime(value) - datetime.now(UTC)).total_seconds()
         except (TypeError, ValueError):
             wait = default
     return min(max(wait, 0.0), MAX_WAIT)
@@ -130,7 +130,7 @@ class Cache:
             "url": url,
             "sha256": sha256(f),
             "bytes": f.stat().st_size,
-            "fetched": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "fetched": datetime.now(UTC).isoformat(timespec="seconds"),
             **(extra or {}),
         }
         self.save()

@@ -51,6 +51,8 @@
   extra `analysis`.
 
 ### Changed
+- **Python 3.10 is no longer supported** (`requires-python = ">=3.11"`): `tomllib` is in the standard
+  library from 3.11, and `scripts/check_plugin.py` and the tests use it. CI tests 3.11, 3.12 and 3.13.
 - **Breaking: every `gmxprep-*` command is now `gromatrix-*`** (`gromatrix-fetch`, `-fix`, `-extract`, `-relax`,
   `-afcompare`, `-gmx`, `-run`, `-analyze`, `-pipeline`, `-status`), one namespace with `gromatrix-report` and
   `gromatrix-compute`. No aliases: the package is unreleased.
