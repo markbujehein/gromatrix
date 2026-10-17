@@ -28,7 +28,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from . import layout
+from . import layout, result
 
 MODES = ("local", "slurm", "remote")
 DEFAULTS = {
@@ -113,8 +113,9 @@ def main(argv: list[str] | None = None) -> int:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(cfg, indent=2) + "\n")
     if cfg is None:
-        print(json.dumps({"ok": False, "error": f"no {layout.COMPUTE}; run `gromatrix-compute set --mode ...`"}))
-        return 1
+        return result.finish(
+            result.fail("compute_unset", f"no {layout.COMPUTE}; run `gromatrix-compute set --mode ...`")
+        )
     out = {"ok": True, "compute": cfg}
     if a.cmd == "run-args":
         out["args"] = run_args(cfg)

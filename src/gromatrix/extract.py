@@ -43,16 +43,17 @@ from pathlib import Path
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import altlocs, layout
+from . import altlocs, layout, result
 from .pdbio import ION_RES, WATER_RES, Atom, read_pdb, residues, write_pdb
+from .result import CodedError
 from .structure import POLYMER_RES, compose, entities_by_sequence, is_identity
 
 CHAIN_POOL = string.ascii_uppercase + string.digits + string.ascii_lowercase
 MAX_COMBOS = 20000
 
 
-class ExtractionError(RuntimeError):
-    pass
+class ExtractionError(CodedError):
+    code = "extract_failed"
 
 
 @dataclass
@@ -682,8 +683,7 @@ def main(argv: list[str] | None = None) -> int:
         want = {i.upper() for i in a.ids}
         files = [p for p in files if p.stem.upper() in want]
     if not files:
-        print(json.dumps({"ok": False, "error": f"no fixed structures in {indir}"}))
-        return 1
+        return result.finish(result.fail("input_missing", f"no fixed structures in {indir}"))
     results, failed = [], []
     for p in files:
         try:

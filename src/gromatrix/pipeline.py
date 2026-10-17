@@ -51,7 +51,7 @@ from pathlib import Path
 
 import yaml
 
-from . import layout
+from . import layout, result
 from .run import emit
 
 LETTERS = "ABCDEFGH"
@@ -310,13 +310,13 @@ def call(step: Step) -> dict:
         with redirect_stdout(tee):
             rc = mod.main(list(step.argv))
     except SystemExit as e:  # argparse rejected a flag from steps.<name>
-        return {"ok": False, "error": f"{step.command}: bad arguments {step.argv} (exit {e.code})"}
+        return result.fail("bad_arguments", f"{step.command}: bad arguments {step.argv} (exit {e.code})")
     tee.write("\n")
     for line in reversed(tee.lines):
         out = _result(line)
         if out is not None:
             return out
-    return {"ok": False, "error": f"{step.command} printed no result line (exit {rc})"}
+    return result.fail("unexpected", f"{step.command} printed no result line (exit {rc})")
 
 
 def execute(steps: list[Step], raw: dict, root: Path, b: Path, a: argparse.Namespace) -> dict:
@@ -400,9 +400,8 @@ def main(argv: list[str] | None = None) -> int:
         else:
             out = execute(steps, raw, root, b, a)
     except Exception as e:  # every failure is reported as the one-line JSON contract, never a traceback
-        out = {"ok": False, "error": f"{type(e).__name__}: {e}"}
-    print(json.dumps(out), flush=True)
-    return 0 if out.get("ok") else 1
+        out = result.from_exception(e)
+    return result.finish(out, flush=True)
 
 
 if __name__ == "__main__":

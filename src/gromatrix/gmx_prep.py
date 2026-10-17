@@ -25,13 +25,20 @@ from pathlib import Path
 
 import yaml
 
-from . import checks, layout
+from . import checks, layout, result
 from . import mdp as mdpmod
 from . import topology as topo
 from .forcefields import ForceField, ForcefieldMismatch, acquire_lock, assert_same, load_lock, resolve
 from .gmx import ToolError, data_prefix, gmx_cmd, gmxlib_env, ion_atom_names, locate_ff_dir, run
 from .ligands import LigandSpec, parameterise, pose_coords
 from .pdbio import ION_RES, GroAtom, classify, read_gro, read_pdb, residue_block, write_gro, write_pdb
+from .result import CodedError
+
+
+class MatrixIncomplete(CodedError, ValueError):
+    """An enzyme x target pair has no docked complex."""
+
+    code = "matrix_incomplete"
 
 
 # ----------------------------------------------------------------- manifest
@@ -80,7 +87,7 @@ def load_manifest(path: Path, allow_incomplete: bool) -> Manifest:
     pairs = {(e, t) for e, t, _v in complexes}
     missing = [f"{e}__{t}" for e in enzymes for t in targets if (e, t) not in pairs]
     if missing and not allow_incomplete:
-        raise ValueError(
+        raise MatrixIncomplete(
             f"matrix incomplete - no docked complex for {missing}; "
             "every enzyme must be paired with every target (or pass --allow-incomplete)"
         )
@@ -714,9 +721,8 @@ def main(argv: list[str] | None = None) -> int:
             a
         )
     except Exception as e:  # every failure is reported as the one-line JSON contract, never a traceback
-        out = {"ok": False, "error": f"{type(e).__name__}: {e}"}
-    print(json.dumps(out))
-    return 0 if out.get("ok") else 1
+        out = result.from_exception(e)
+    return result.finish(out)
 
 
 if __name__ == "__main__":

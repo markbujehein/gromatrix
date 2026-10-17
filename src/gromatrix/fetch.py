@@ -27,7 +27,7 @@ import re
 import sys
 from pathlib import Path
 
-from . import layout
+from . import layout, result
 from .net import Cache, HTTPError, get_json
 
 FILES = "https://files.rcsb.org/download/{id}.{ext}.gz"
@@ -160,12 +160,10 @@ def main(argv: list[str] | None = None) -> int:
         else:
             ids = search(a.query, a.max)
     except HTTPError as e:
-        print(json.dumps({"ok": False, "error": str(e)}))
-        return 1
+        return result.finish(result.fail(e.code, str(e)))
     bad = [i for i in ids if not ID_RE.match(i)]
     if bad:
-        print(json.dumps({"ok": False, "error": f"not PDB IDs: {bad}"}))
-        return 1
+        return result.finish(result.fail("fetch_bad_id", f"not PDB IDs: {bad}"))
     cache = Cache(a.batch_dir / a.out)
     done, failed = [], []
     for pid in dict.fromkeys(ids):

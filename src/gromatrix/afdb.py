@@ -41,7 +41,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import layout
+from . import layout, result
 from .net import Cache, HTTPError, atomic_write, get_json
 from .pdbio import PROTEIN_RES, read_pdb, write_pdb
 
@@ -313,8 +313,7 @@ def main(argv: list[str] | None = None) -> int:
     if a.ids:
         units = [u for u in units if u.name.upper() in {i.upper() for i in a.ids}]
     if not units:
-        print(json.dumps({"ok": False, "error": f"no structures in {root}"}))
-        return 1
+        return result.finish(result.fail("input_missing", f"no structures in {root}"))
     cache = Cache(a.batch_dir / a.afdb_dir)
     rows, flagged, failed = [], [], []
     for u in units:

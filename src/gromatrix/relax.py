@@ -46,7 +46,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import layout
+from . import layout, result
 from .forcefields import ForcefieldMismatch, acquire_lock, lock_path, resolve
 from .pdbio import ION_RES, PROTEIN_RES, Atom, read_pdb, write_pdb
 
@@ -290,16 +290,14 @@ def main(argv: list[str] | None = None) -> int:
     try:
         family = _family(a)
     except (ForcefieldMismatch, KeyError) as e:
-        print(json.dumps({"ok": False, "error": f"{type(e).__name__}: {e}"}))
-        return 1
+        return result.finish(result.from_exception(e))
     units = (
         sorted(p for p in (a.batch_dir / a.indir).iterdir() if p.is_dir()) if (a.batch_dir / a.indir).exists() else []
     )
     if a.ids:
         units = [u for u in units if u.name.upper() in {i.upper() for i in a.ids}]
     if not units:
-        print(json.dumps({"ok": False, "error": f"no unit directories in {a.batch_dir / a.indir}"}))
-        return 1
+        return result.finish(result.fail("input_missing", f"no unit directories in {a.batch_dir / a.indir}"))
     results, failed = [], []
     for u in units:
         files = sorted(

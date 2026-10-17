@@ -29,7 +29,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import layout
+from . import layout, result
 
 # Plugin skill and agent names (the plugin is called `gromatrix`, so components are `gromatrix:<name>`).
 ORCHESTRATOR = "gromatrix:start"
@@ -249,16 +249,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--batch-dir", type=Path, required=True)
     a = ap.parse_args(argv)
     if not a.batch_dir.exists():
-        print(
-            json.dumps(
-                {
-                    "ok": False,
-                    "error": f"{a.batch_dir} does not exist",
-                    "next": {"skill": STRUCTURE_SKILL, "command": f"gromatrix-fetch --batch-dir {a.batch_dir} ..."},
-                }
+        return result.finish(
+            result.fail(
+                "batch_missing",
+                f"{a.batch_dir} does not exist",
+                next={"skill": STRUCTURE_SKILL, "command": f"gromatrix-fetch --batch-dir {a.batch_dir} ..."},
             )
         )
-        return 1
     print(json.dumps(batch_status(a.batch_dir)))
     return 0
 

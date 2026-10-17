@@ -39,7 +39,7 @@ from pathlib import Path
 import numpy as np
 from openmm.unit import angstrom
 
-from . import altlocs, layout
+from . import altlocs, layout, result
 from .pdbio import ION_RES, WATER_RES, read_pdb, residues, write_pdb
 from .structure import POLYMER_RES, read_metadata, read_raw_atoms
 
@@ -346,8 +346,7 @@ def main(argv: list[str] | None = None) -> int:
         want = {i.upper() for i in a.ids}
         files = [p for p in files if p.stem.upper() in want]
     if not files:
-        print(json.dumps({"ok": False, "error": f"no structures in {indir}"}))
-        return 1
+        return result.finish(result.fail("input_missing", f"no structures in {indir}"))
     results, failed = [], []
     for p in files:
         try:

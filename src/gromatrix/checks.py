@@ -19,13 +19,14 @@ import re
 from pathlib import Path
 
 from .pdbio import read_gro
+from .result import CodedError
 
 SECTION_RE = re.compile(r"^\s*\[\s*([\w-]+)\s*\]")
 INCLUDE_RE = re.compile(r'^\s*#include\s+"([^"]+)"')
 
 
-class CheckError(RuntimeError):
-    pass
+class CheckError(CodedError):
+    code = "check_failed"
 
 
 def _resolve(inc: str, here: Path, search: list[Path]) -> Path | None:
