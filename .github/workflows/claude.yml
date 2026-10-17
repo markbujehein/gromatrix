@@ -1,0 +1,41 @@
+name: Claude mention
+
+# `@claude` in a PR comment or review answers questions about the code (anthropics/claude-code-action,
+# examples/claude.yml). The action itself only reacts to users with write access.
+# Read-only on purpose: Claude can comment but not push. Raise `contents` to `write` to let it commit.
+
+# DISABLED for now: no ANTHROPIC_API_KEY secret is configured, so the automatic triggers are off and
+# the workflow can only be started by hand (Actions tab > Run workflow). To re-enable: add the secret,
+# install the Claude GitHub app (`/install-github-app`), and restore the `on:` block from git history
+# (`git log -p -- .github/workflows/claude.yml`).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  claude:
+    name: Claude
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read          # lets Claude read CI results on the PR
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+      - uses: anthropics/claude-code-action@f27be6b65a4652f08a2ba3cff79114829b588967 # v1.0.252
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: |
+            --max-turns 15

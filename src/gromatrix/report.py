@@ -277,7 +277,14 @@ def sec_af(b: Path, figdir: Path | None) -> tuple[str, list[str]]:
         _style(ax, "Experiment vs AlphaFold prediction", "TM-score", "Cα-lDDT")
         ax.scatter([r["tm_score"] for r in pts], [r["lddt_ca"] for r in pts], color=C1, s=28)
         for r in pts:
-            ax.annotate(f"{r['id']}:{r['chain']}", (r["tm_score"], r["lddt_ca"]), fontsize=7, color=MUTED, xytext=(4, 3), textcoords="offset points")
+            ax.annotate(
+                f"{r['id']}:{r['chain']}",
+                (r["tm_score"], r["lddt_ca"]),
+                fontsize=7,
+                color=MUTED,
+                xytext=(4, 3),
+                textcoords="offset points",
+            )
         ax.axvline(TM_MIN, color=GRID, lw=1.2)
         ax.axhline(LDDT_MIN, color=GRID, lw=1.2)
         ax.set_xlim(0, 1.02)
@@ -356,7 +363,8 @@ def sec_run(b: Path, figdir: Path | None) -> tuple[str, list[str]]:
         if not r:
             continue
         ph = r.get("phases") or {}
-        rows.append([s["id"], r.get("status")] + [(ph.get(k) or {}).get("status", "-") for k in ("em", "nvt", "npt", "md")])
+        phase_status = [(ph.get(k) or {}).get("status", "-") for k in ("em", "nvt", "npt", "md")]
+        rows.append([s["id"], r.get("status"), *phase_status])
         warns += [(s["id"], w) for w in r.get("warnings", [])]
         if r.get("reason"):
             warns.append((s["id"], r["reason"]))
@@ -426,7 +434,10 @@ def sec_analysis(b: Path, figdir: Path | None) -> tuple[str, list[str]]:
     )
     short = [a["id"] for a in reps if (a.get("time_ns") or [0])[-1] < SHORT_RUN_NS]
     if short:
-        t += f"\n> **Short trajectories** ({', '.join(short)}): under {SHORT_RUN_NS:g} ns. Equilibration and pose retention only.\n"
+        t += (
+            f"\n> **Short trajectories** ({', '.join(short)}): under {SHORT_RUN_NS:g} ns. "
+            "Equilibration and pose retention only.\n"
+        )
     figs = []
     if figdir and reps:
         have_ca = [a for a in reps if a.get("ca_rmsd")]
@@ -451,7 +462,11 @@ def sec_analysis(b: Path, figdir: Path | None) -> tuple[str, list[str]]:
                 "the target: a lower Cα plateau with the target suggests stabilisation, a higher target "
                 "curve suggests a pose that is moving.",
             )
-        cells = {(a.get("enzyme"), a.get("target")): (a.get("summary", {}).get("target_rmsd") or {}).get("last_half_mean") for a in reps if a.get("role") == "complex"}
+        cells = {
+            (a.get("enzyme"), a.get("target")): (a.get("summary", {}).get("target_rmsd") or {}).get("last_half_mean")
+            for a in reps
+            if a.get("role") == "complex"
+        }
         encs = sorted({k[0] for k in cells})
         tgs = sorted({k[1] for k in cells})
         if cells and (len(encs) > 1 or len(tgs) > 1):
@@ -496,7 +511,7 @@ def build_report(b: Path, figures: bool = True) -> dict:
         ("G", "Run: molecular dynamics", lambda: sec_run(b, figdir)),
         ("H", "Analyze: trajectories", lambda: sec_analysis(b, figdir)),
     ]
-    ff = (st.get("forcefield") or "not locked")
+    ff = st.get("forcefield") or "not locked"
     nxt = st.get("next") or {}
     name = b.resolve().parent.name if b.resolve().name == "batch" else b.resolve().name
     md = [
@@ -515,7 +530,7 @@ def build_report(b: Path, figures: bool = True) -> dict:
         "",
     ]
     if figures and not figdir:
-        md += ["> Figures skipped: matplotlib is not installed (`pip install matplotlib`, or use `pixi run -e md`).", ""]
+        md += ["> Figures skipped: matplotlib is not installed (`pip install matplotlib`, or `pixi run -e md`).", ""]
     figs: list[str] = []
     done: list[str] = []
     for letter, title, fn in sections:
@@ -529,7 +544,9 @@ def build_report(b: Path, figures: bool = True) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="gromatrix-report", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        prog="gromatrix-report", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--batch-dir", type=Path, required=True)
     ap.add_argument("--no-figures", action="store_true", help="Markdown only")
     a = ap.parse_args(argv)

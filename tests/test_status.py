@@ -46,7 +46,8 @@ def test_next_skill_follows_pipeline_state(tmp_path):
     assert batch_status(b)["next"]["command"].endswith("--only E1")
     _w(b / "06-systems" / "E1" / "run.json", {"status": "done"})
     st = batch_status(b)
-    assert st["next"]["skill"] == "gromatrix:analysis" and st["next"]["agent"] == "gromatrix:md-analyst" and st["steps"]["G"] == "done"  # H
+    assert st["next"]["skill"] == "gromatrix:analysis" and st["next"]["agent"] == "gromatrix:md-analyst"
+    assert st["steps"]["G"] == "done"  # H is next
     _w(b / "06-systems" / "E1" / "analysis" / "analysis.json", {"status": "ok", "flags": ["ligand_drift: ..."]})
     final = batch_status(b)
     assert final["next"]["skill"] is None and final["steps"]["H"] == "done"
@@ -74,8 +75,9 @@ def test_dead_runner_and_smoke_failures(tmp_path):
     st = batch_status(tmp_path)
     assert st["steps"]["G"] == "done"  # B is never run by G: its smoke test failed
     # A runner killed with -9 leaves 'running' behind; status must not wait for it forever.
-    _w(tmp_path / "06-systems" / "A" / "run.json", {"status": "running", "host": socket.gethostname(), "pid": 2**22 + 7})
+    run_json = tmp_path / "06-systems" / "A" / "run.json"
+    _w(run_json, {"status": "running", "host": socket.gethostname(), "pid": 2**22 + 7})
     st = batch_status(tmp_path)
     assert st["systems"]["run"] == {"interrupted": ["A"]} and st["next"]["command"].startswith("gromatrix-run")
-    _w(tmp_path / "06-systems" / "A" / "run.json", {"status": "running", "host": socket.gethostname(), "pid": os.getpid()})
+    _w(run_json, {"status": "running", "host": socket.gethostname(), "pid": os.getpid()})
     assert "running" in batch_status(tmp_path)["next"]["why"]

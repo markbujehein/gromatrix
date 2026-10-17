@@ -11,6 +11,16 @@
     `gromatrix-run` or `gromatrix-analyze` itself; the agents return one JSON payload.
   - `gromatrix-status` `next` now carries `agent` for G and H and plugin-namespaced skill names.
   - Replaces the standalone skill zips and `scripts/package_skills.py` with `scripts/check_plugin.py`.
+- **Plugin hooks** (`hooks/hooks.json`, `scripts/hooks/`): subagent-only `gromatrix-run` / `-analyze`,
+  a Bash guard (`-maxwarn`, `gmx mdrun`, `rm -r` of batch folders, `build --force` over MD results),
+  a read guard (trajectories, energy files, checkpoints, whole logs), a SubagentStop payload check,
+  `gromatrix-status` at SessionStart, and `00-config/events.jsonl`. A second layer; CLI gates stay
+  authoritative. `scripts/check_plugin.py` validates `hooks.json`.
+- **Claude Code GitHub Action**: `claude-review.yml` (PR review, same-repository PRs only) and
+  `claude.yml` (`@claude` mentions, read-only); SHA-pinned, least-privilege permissions.
+- **Codecov**: CI uploads `coverage.xml` (`codecov.yml`, non-blocking); the README badge points to it and
+  replaces the `badges`-branch job.
+- **`gromatrix-watch`**: one line per MD phase change per system; exits when all systems are finished.
 - **`gromatrix-compute`**: stores where MD runs (local, Slurm, remote) in `00-config/compute.json`;
   CPU-only is fine; the orchestrator asks once before step G.
 - **`gromatrix-report`**: `09-reports/README.md` with tables and figures for steps B-H, and a README in

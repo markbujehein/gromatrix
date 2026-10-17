@@ -1,0 +1,56 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {"type": "command", "if": "Bash(gromatrix-run *)", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/subagent_only.py\""},
+          {"type": "command", "if": "Bash(gromatrix-analyze *)", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/subagent_only.py\""},
+          {"type": "command", "if": "Bash(pixi run * gromatrix-run *)", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/subagent_only.py\""},
+          {"type": "command", "if": "Bash(pixi run * gromatrix-analyze *)", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/subagent_only.py\""},
+          {"type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/bash_guard.py\""}
+        ]
+      },
+      {
+        "matcher": "Read|Bash",
+        "hooks": [
+          {"type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/read_guard.py\""}
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {"type": "command", "if": "Bash(gromatrix-*)", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/log_event.py\""},
+          {"type": "command", "if": "Bash(pixi run * gromatrix-*)", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/log_event.py\""}
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {"type": "command", "if": "Bash(gromatrix-*)", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/log_event.py\""},
+          {"type": "command", "if": "Bash(pixi run * gromatrix-*)", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/log_event.py\""}
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "gromatrix:md-runner|gromatrix:md-analyst",
+        "hooks": [
+          {"type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/subagent_payload.py\""}
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {"type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/session_status.py\""}
+        ]
+      }
+    ]
+  }
+}

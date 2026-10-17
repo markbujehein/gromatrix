@@ -2,11 +2,9 @@
 
 <p>
   <a href="https://github.com/markbujehein/gromatrix/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/markbujehein/gromatrix/actions/workflows/ci.yml/badge.svg?branch=main"></a>
-  <a href="https://github.com/markbujehein/gromatrix/tree/badges"><img alt="coverage" src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/markbujehein/gromatrix/badges/coverage.json"></a>
-  <a href="CHANGELOG.md"><img alt="version" src="https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmarkbujehein%2Fgromatrix%2Fmain%2Fpyproject.toml&query=%24.project.version&label=version&color=orange"></a>
+  <a href="https://codecov.io/gh/markbujehein/gromatrix"><img alt="coverage" src="https://codecov.io/gh/markbujehein/gromatrix/graph/badge.svg"></a>
+  <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-green"></a>
   <a href="pixi.toml"><img alt="python" src="https://img.shields.io/badge/python-3.10%20%7C%203.12%20%7C%203.13-blue"></a>
-  <a href="https://pixi.sh"><img alt="pixi" src="https://img.shields.io/badge/env-pixi-yellow"></a>
-  <a href="https://github.com/astral-sh/ruff"><img alt="ruff" src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json"></a>
 </p>
 
 **From PDB IDs to a comparable set of GROMACS simulations, with one forcefield and with every
@@ -303,6 +301,14 @@ Then ask for what you want: *"Use gromatrix to prepare 1XVP with CITCO as the ta
 | agent `gromatrix:md-analyst` | Runs step H and the batch report, returns one JSON payload |
 | `references/`, `examples/` | Batch layout, biophysical rules, compute modes, subagent contract; the final-report format example |
 
+The plugin also ships **hooks** (`hooks/hooks.json`, scripts in `scripts/hooks/`, Python stdlib only,
+so `python3` must be on PATH). They keep `gromatrix-run` and `gromatrix-analyze` inside the
+subagents, refuse `-maxwarn`, direct `gmx mdrun`, `rm -r` of batch folders and a `build --force` over
+MD results, keep trajectories and whole logs out of the context, check the subagents' JSON payload,
+inject `gromatrix-status` at session start, and log commands to `00-config/events.jsonl`. Hooks are a
+second layer: the `gromatrix-*` gates stay authoritative. `gromatrix-watch --batch-dir B` follows a
+run, one line per MD phase change.
+
 Skills load only when their step is reached and keep long detail in `references/` files that are read
 on demand, so a session pays for what it uses.
 
@@ -334,18 +340,34 @@ JSON artefacts into `09-reports/README.md` with tables and figures for steps Bâ€
 
 ```bash
 pixi run lint        # ruff check + format check (tiny env, no science stack)
-pixi run fmt         # auto-format and auto-fix
+pixi run check       # lint + syntax (ruff), plugin validation, fast tests: what CI checks
+pixi run fix         # auto-fix what ruff can (safe fixes + formatting), then run check again
+pixi run hooks       # install the pre-commit / pre-push git hooks
 pixi run test-all    # what CI runs; also: pixi run -e py310 test-all / -e py313
 pixi run -e skills check-plugin     # validate plugin.json, marketplace.json, skills/ and agents/
 pixi shell -e md     # adds GROMACS / acpype / Open Babel for real step Fâ€“H runs
 ```
 
-CI (`.github/workflows/ci.yml`) has four jobs:
+Optional but recommended: [pre-commit](https://pre-commit.com) runs the Ruff check (and the plugin
+validation when plugin files change) on every commit, and the offline tests on every push, so failures
+show up before CI does. `pixi run hooks` installs it once per clone. The hooks only check, they never
+rewrite your files.
+
+CI (`.github/workflows/ci.yml`) has three jobs:
 - **lint:** Ruff.
 - **tests:** with coverage, on Python 3.12 for pull requests, and on 3.10 / 3.12 / 3.13 for
   pushes.
-- **plugin:** validates the plugin manifest, skills and agents.
-- **coverage badge:** published from `main` to the `badges` branch.
+- **plugin:** validates the plugin manifest, skills, agents and hooks.
+
+The tests job uploads `coverage.xml` to [Codecov](https://codecov.io/gh/markbujehein/gromatrix)
+(`codecov.yml`: project target relative to the base commit with a 2% allowance; the patch check is
+informational). The upload needs the `CODECOV_TOKEN` repository secret and never fails CI.
+
+AI review (optional, needs a secret): `claude-review.yml` reviews same-repository pull requests and
+`claude.yml` answers `@claude` mentions, both through
+[anthropics/claude-code-action](https://github.com/anthropics/claude-code-action). They need the
+`ANTHROPIC_API_KEY` repository secret and the Claude GitHub app; without them the jobs fail and nothing
+else is affected. Fork and Dependabot PRs are skipped (no secrets). The mention workflow is read-only.
 
 Hardening:
 - Actions are pinned to commit SHAs (kept current by Dependabot).

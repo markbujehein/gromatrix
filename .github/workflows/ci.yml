@@ -80,6 +80,14 @@ jobs:
       - name: Coverage summary
         if: matrix.environment == 'default'
         run: pixi run --locked -e default coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload to Codecov
+        # Never fails CI: forks and PRs without the token simply skip the upload.
+        if: matrix.environment == 'default'
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          files: coverage.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
       - name: Upload coverage.xml
         if: matrix.environment == 'default'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -87,37 +95,3 @@ jobs:
           name: coverage-xml
           path: coverage.xml
           retention-days: 14
-
-  coverage-badge:
-    name: Publish coverage badge
-    needs: test
-    # Only trusted pushes to main publish; PRs never get a write token.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: write   # this job only: force-pushes coverage.json to the orphan `badges` branch
-    steps:
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: coverage-xml
-      - name: Write shields.io endpoint JSON
-        run: |
-          python3 - <<'PY'
-          import json, xml.etree.ElementTree as ET
-          pct = round(100 * float(ET.parse("coverage.xml").getroot().get("line-rate")))
-          color = "brightgreen" if pct >= 80 else "green" if pct >= 70 else "yellow" if pct >= 60 else "orange"
-          json.dump({"schemaVersion": 1, "label": "coverage", "message": f"{pct}%", "color": color},
-                    open("coverage.json", "w"))
-          print(f"coverage {pct}%")
-          PY
-      - name: Push to badges branch
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir badges && mv coverage.json badges/ && cd badges
-          git init -q -b badges
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add coverage.json && git commit -q -m "coverage badge for ${GITHUB_SHA::7}"
-          git push -q --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" badges
