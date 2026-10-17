@@ -12,6 +12,10 @@ subagent contract) are in the top-level `references/`.
   (`{"ok": …}`) and exits non-zero on failure. `gromatrix-run` and `gromatrix-pipeline` stream
   progress lines before it. Exceptions are caught in `main()` and reported as `{"ok": false,
   "error": …}`, never as a traceback.
+- **A fixed result line.** Failures also carry a stable `code` and a `next_action`; build and run add an
+  `applied` receipt; long lists can be stubbed (`--full` prints them). `ok` and `error` are unchanged. See
+  [`references/result-envelope.md`](../references/result-envelope.md) and the decisions in
+  [`docs/adr/`](adr/).
 - **State lives in files.** Every step reads and writes only the batch directory.
   `gromatrix-status` reconstructs progress from those files alone, so any session or agent can
   resume a batch.

@@ -59,3 +59,5 @@ batch, not just this invocation. A stored analysis is reused only if its `settin
 begin, H-bond criteria, flag thresholds) match the current flags.
 `B/08-analysis/analysis_summary.csv` columns: `id, role, enzyme, target, status, frames, time_ns,
 ca_rmsd_last_half, target_rmsd_last_half, rg_mean, hbond_mean, top_hbond, top_hbond_occupancy, flags`.
+
+Every result line also carries `code`, `next_action` and, for build and run, `applied`: see `references/result-envelope.md`.
