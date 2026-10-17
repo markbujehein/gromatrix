@@ -43,6 +43,10 @@ def bash(cmd, **extra):
         ("cd B && gromatrix-analyze --batch-dir B", None, True),
         ("echo gromatrix-run is for subagents", None, False),
         ("gromatrix-status --batch-dir B", None, False),
+        ("gromatrix-run --batch-dir B --threads 4 --background", None, False),  # the documented no-Agent fallback
+        ("gromatrix-run --batch-dir B --slurm --time 24:00:00", None, False),
+        ("gromatrix-run --help", None, False),
+        ("gromatrix-analyze --batch-dir B --background", None, False),
     ],
 )
 def test_subagent_only(cmd, agent_id, denied):
@@ -183,6 +187,25 @@ def test_session_status_injects_one_line(tmp_path):
     out = json.loads(r.stdout)["hookSpecificOutput"]
     assert out["hookEventName"] == "SessionStart" and "gromatrix:start" in out["additionalContext"]
     assert len(out["additionalContext"]) < 10000
+
+
+def test_session_status_follows_pipeline_yaml_to_its_batch(tmp_path):
+    (tmp_path / "work" / "b" / "00-config").mkdir(parents=True)
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "pipeline.yaml").write_text("steps: {}\nbatch_dir: ../work/b  # the batch\n")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    fake = bin_dir / "gromatrix-status"
+    fake.write_text('#!/bin/sh\necho "{\\"ok\\": true, \\"args\\": \\"$*\\"}"\n')
+    fake.chmod(0o755)
+    r = run_hook("session_status.py", {"cwd": str(proj)}, path_env=f"{bin_dir}:/usr/bin:/bin")
+    assert str((tmp_path / "work" / "b").resolve()) in json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+
+
+def test_session_status_ignores_pipeline_yaml_without_a_batch(tmp_path):
+    (tmp_path / "pipeline.yaml").write_text("batch_dir: not/there\n")
+    assert run_hook("session_status.py", {"cwd": str(tmp_path)}).stdout == ""
 
 
 def test_session_status_noops(tmp_path):

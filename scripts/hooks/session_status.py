@@ -1,12 +1,14 @@
 """SessionStart (startup, resume, clear, compact): inject `gromatrix-status` as additional context.
 
-Runs only when the working directory looks like a batch (00-config/) or has a pipeline.yaml, and
-only if `gromatrix-status` is on PATH. Silent no-op otherwise.
+Runs only when the working directory is a batch (00-config/), or has a pipeline.yaml whose `batch_dir`
+(relative to that file, as in gromatrix-pipeline) is an existing batch, and only if `gromatrix-status` is on
+PATH. Silent no-op otherwise: status of a folder that is not a batch would read as "nothing done yet".
 """
 
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -17,9 +19,20 @@ LIMIT = 9500
 KEEP = ("ok", "batch", "forcefield", "steps", "systems", "next")
 
 
+def find_batch(cwd: Path) -> Path | None:
+    if (cwd / "00-config").is_dir():
+        return cwd
+    try:
+        m = re.search(r"^batch_dir:\s*[\"']?([^\"'#\s]+)", (cwd / "pipeline.yaml").read_text(), re.M)
+    except OSError:
+        return None
+    batch = (cwd / m.group(1)).resolve() if m else None
+    return batch if batch and (batch / "00-config").is_dir() else None
+
+
 def main() -> None:
-    cwd = Path(read_input().get("cwd") or ".")
-    if not ((cwd / "00-config").is_dir() or (cwd / "pipeline.yaml").is_file()):
+    cwd = find_batch(Path(read_input().get("cwd") or "."))
+    if cwd is None:
         return
     exe = shutil.which("gromatrix-status")
     if not exe:
