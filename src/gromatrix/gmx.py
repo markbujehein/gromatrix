@@ -10,9 +10,11 @@ import subprocess
 from functools import cache
 from pathlib import Path
 
+from .result import CodedError
 
-class ToolError(RuntimeError):
-    pass
+
+class ToolError(CodedError):
+    code = "tool_failed"
 
 
 def gmx_cmd(gmx: str, *sub: str) -> list[str]:

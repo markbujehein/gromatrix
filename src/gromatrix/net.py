@@ -14,6 +14,8 @@ import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 
+from .result import CodedError
+
 USER_AGENT = "gromatrix/0.2 (+https://github.com/markbujehein/gromatrix)"
 RETRY_STATUS = {429, 500, 502, 503, 504}
 MAX_WAIT = 120.0  # s; never let a server's Retry-After stall a batch for long
@@ -42,7 +44,9 @@ def atomic_write(path: Path, text: str) -> None:
     os.replace(tmp, path)
 
 
-class HTTPError(RuntimeError):
+class HTTPError(CodedError):
+    code = "fetch_http"
+
     def __init__(self, url: str, status: int | None, msg: str):
         super().__init__(f"{status or 'network'} for {url}: {msg}")
         self.url, self.status = url, status

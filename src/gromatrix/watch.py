@@ -17,7 +17,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import checks, layout
+from . import checks, layout, result
 
 PHASE_NAMES = ("em", "nvt", "npt", "md")  # the phase order of run.PHASES (kept here: run imports are heavy)
 FINAL = ("done", "failed", "interrupted")
@@ -63,7 +63,7 @@ def watch(batch: Path, interval: float, once: bool) -> int:
     while True:
         wds = sorted(p.parent for p in (batch / layout.SYSTEMS).glob("*/system.json") if _runnable(p))
         if not wds:
-            print(json.dumps({"ok": False, "error": f"no built systems in {batch / layout.SYSTEMS}"}), flush=True)
+            result.finish(result.fail("input_missing", f"no built systems in {batch / layout.SYSTEMS}"), flush=True)
             return 2
         runs = {}
         for wd in wds:

@@ -18,10 +18,81 @@ class Code:
     next_action: str
 
 
+class CodedError(RuntimeError):
+    """Base of the exceptions gromatrix raises on purpose: `code` names the failure in `CODES`.
+
+    A subclass sets its default `code`; one raise can override it: `CodedError(msg, code="batch_missing")`.
+    """
+
+    code = "unexpected"
+
+    def __init__(self, *args, code: str | None = None):
+        super().__init__(*args)
+        if code is not None:
+            self.code = code
+
+
 CODES: dict[str, Code] = {
     "unexpected": Code(
         "an error no command anticipated",
         "read the error text; if it is not a usage mistake, report it with the command and its arguments",
+    ),
+    "check_failed": Code(
+        "a physical or bookkeeping gate failed (charge, LINCS, unfinished mdrun)",
+        "read the error: it names the input to fix; fix it and rerun the command, never raise a tolerance",
+    ),
+    "em_not_converged": Code(
+        "energy minimisation did not converge",
+        "look for clashes or a bad ligand pose, repair the structure or ligand, rebuild the system and rerun",
+    ),
+    "ligand_invalid": Code(
+        "a ligand failed parameterisation or a chemistry check",
+        "fix the ligand SMILES, SDF or charge in the manifest and rerun the build",
+    ),
+    "tool_failed": Code(
+        "an external tool (gmx, acpype, cgenff, mdrun) failed or is not installed",
+        "open the log named in the error; install the tool if it is missing",
+    ),
+    "ff_mismatch": Code(
+        "a command would mix forcefields in one batch",
+        "use the batch's locked forcefield, or start a new batch directory for a different one",
+    ),
+    "extract_failed": Code(
+        "no biological unit could be chosen or built",
+        "see unit.json; adjust --unit or --max-chains, and use --allow-incomplete only with the user's consent",
+    ),
+    "topology_invalid": Code(
+        "a GROMACS topology could not be read or is inconsistent",
+        "regenerate the topology; report the error if it persists",
+    ),
+    "fetch_http": Code(
+        "a download failed (network error or HTTP status)",
+        "check the ID and the network; 404 usually means an obsolete or wrong ID",
+    ),
+    "fetch_bad_id": Code("a PDB ID is malformed", "pass 4-character PDB IDs (digit plus three alphanumerics)"),
+    "run_interrupted": Code(
+        "mdrun stopped early (signal or --maxh); the state is resumable",
+        "rerun gromatrix-run with the same arguments: it resumes from the checkpoint",
+    ),
+    "matrix_incomplete": Code(
+        "an enzyme x target pair has no docked complex",
+        "supply the docked complexes, or run native pairs only with --allow-incomplete (needs the user's consent)",
+    ),
+    "batch_missing": Code(
+        "the batch directory or the systems it should hold do not exist",
+        "check --batch-dir; run gromatrix-status to see the next step",
+    ),
+    "input_missing": Code(
+        "the input folder for this step is empty or absent",
+        "run the previous step first; gromatrix-status shows which",
+    ),
+    "bad_arguments": Code(
+        "a step of the pipeline rejected its command-line arguments",
+        "run the named command with --help and correct the step's arguments in the manifest",
+    ),
+    "compute_unset": Code(
+        "no compute configuration has been saved",
+        "run gromatrix-compute set --mode ... (ask the user for the mode)",
     ),
 }
 

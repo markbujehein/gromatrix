@@ -39,7 +39,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import checks, layout
+from . import checks, layout, result
 from .gmx import gmx_cmd, run
 from .pdbio import read_gro
 from .plotstyle import C1, C2, INK, MUTED
@@ -450,7 +450,7 @@ def cmd_analyze(a: argparse.Namespace) -> dict:
             (wd / "analysis" / "analysis.json").write_text(json.dumps(r, indent=1))
         results.append(r)
     if not results:
-        return {"ok": False, "error": f"no built systems under {b}/systems"}
+        return result.fail("input_missing", f"no built systems under {b}/systems")
     done = [r for r in results if r["status"] == "ok"]
     n_rows = write_summary(b)
     failed = [{"id": r["id"], "reason": r["reason"]} for r in results if r["status"] == "failed"]
@@ -485,9 +485,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         out = cmd_analyze(a)
     except Exception as e:  # every failure is reported as the one-line JSON contract, never a traceback
-        out = {"ok": False, "error": f"{type(e).__name__}: {e}"}
-    print(json.dumps(out), flush=True)
-    return 0 if out.get("ok") else 1
+        out = result.from_exception(e)
+    return result.finish(out, flush=True)
 
 
 if __name__ == "__main__":

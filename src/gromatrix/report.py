@@ -24,7 +24,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from . import layout
+from . import layout, result
 from .plotstyle import BAD, C1, C2, GRID, INK, MUTED, OK, have_matplotlib
 from .plotstyle import figure as _figure
 from .plotstyle import save as _save
@@ -551,13 +551,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-figures", action="store_true", help="Markdown only")
     a = ap.parse_args(argv)
     if not a.batch_dir.is_dir():
-        print(json.dumps({"ok": False, "error": f"{a.batch_dir} is not a directory"}))
-        return 1
+        return result.finish(result.fail("batch_missing", f"{a.batch_dir} is not a directory"))
     try:
         res = build_report(a.batch_dir, figures=not a.no_figures)
     except Exception as e:  # report generation must never be mistaken for a pipeline failure
-        print(json.dumps({"ok": False, "error": f"{type(e).__name__}: {e}"}))
-        return 1
+        return result.finish(result.from_exception(e))
     print(json.dumps(res))
     return 0
 
