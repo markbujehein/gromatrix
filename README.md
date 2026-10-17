@@ -346,6 +346,11 @@ pixi run -e skills check-plugin     # validate plugin.json, marketplace.json, sk
 pixi shell -e md     # adds GROMACS / acpype / Open Babel for real step F–H runs
 ```
 
+Optional but recommended: [pre-commit](https://pre-commit.com) runs the Ruff check (and the plugin
+validation when plugin files change) on every commit, and the offline tests on every push, so failures
+show up before CI does. `pipx install pre-commit && pre-commit install` once per clone. The hooks only
+check, they never rewrite your files.
+
 CI (`.github/workflows/ci.yml`) has three jobs:
 - **lint:** Ruff.
 - **tests:** with coverage, on Python 3.12 for pull requests, and on 3.10 / 3.12 / 3.13 for
