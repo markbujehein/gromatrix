@@ -5,10 +5,13 @@ coverage:
       default:
         target: auto      # compare with the base commit
         threshold: 2%     # allow small dips
+        informational: true   # a global percentage is a trend, not a gate: shown on the PR, never blocks it
     patch:
       default:
-        target: 60%
-        informational: true   # shown on the PR, never blocks it
+        target: auto      # new and changed lines must be covered about as well as the base
+        threshold: 2%     # allow a small shortfall; this check blocks
+github_checks:
+  annotations: true   # mark uncovered lines in the PR diff
 comment:
-  layout: "condensed_header, diff, files"
+  layout: "condensed_header, diff, flags, files"
   require_changes: false   # comment on every PR, not only when coverage changes
