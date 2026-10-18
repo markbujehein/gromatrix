@@ -11,4 +11,4 @@ coverage:
         informational: true   # shown on the PR, never blocks it
 comment:
   layout: "condensed_header, diff, files"
-  require_changes: true
+  require_changes: false   # comment on every PR, not only when coverage changes
