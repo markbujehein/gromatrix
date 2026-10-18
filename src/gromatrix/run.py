@@ -55,7 +55,6 @@ from . import mdp as mdpmod
 from .forcefields import load_lock
 from .gmx import ToolError, gmx_cmd, gmxlib_env, locate_ff_dir, run, tool_env
 from .net import atomic_write
-from .result import CodedError
 
 
 @dataclass(frozen=True)
@@ -130,7 +129,7 @@ def nsteps_of(wd: Path, phase: Phase) -> int:
 
 
 # ------------------------------------------------------------------ execution
-class Interrupted(CodedError):
+class Interrupted(result.CodedError):
     code = "run_interrupted"
 
 
@@ -552,10 +551,10 @@ def cmd_run(a: argparse.Namespace, argv: list[str]) -> dict:
     }
     (b / layout.BATCH_RUN).parent.mkdir(parents=True, exist_ok=True)
     atomic_write(b / layout.BATCH_RUN, json.dumps(summary, indent=2))
-    opts = {k: getattr(a, k) for k in RUN_OPTIONS}
+    opts = {k: getattr(a, k) for k in RUN_OPTIONS}  # run uses each as given, so no `used` values: facts only
     return {
         "ok": all(r["status"] == "done" for r in results),
-        "applied": result.receipt(opts, opts, {"systems": {r["id"]: r["status"] for r in results}}),
+        "applied": result.receipt(opts, {}, {"systems": {r["id"]: r["status"] for r in results}}),
         "done": [r["id"] for r in results if r["status"] == "done"],
         "failed": [r for r in results if r["status"] == "failed"],
         "interrupted": [r["id"] for r in results if r["status"] == "interrupted"],

@@ -95,6 +95,10 @@ CODES: dict[str, Code] = {
         "a step of the pipeline rejected its command-line arguments",
         "run the named command with --help and correct the step's arguments in the manifest",
     ),
+    "manifest_invalid": Code(
+        "the pipeline manifest cannot produce the next step's inputs (no units, no targets, no forcefield)",
+        "fix the manifest named in the error, or run the earlier steps so their outputs exist, then rerun",
+    ),
     "compute_unset": Code(
         "no compute configuration has been saved",
         "run gromatrix-compute set --mode ... (ask the user for the mode)",
@@ -116,10 +120,15 @@ def fail(code: str, error: str, **fields) -> dict:
     return {"ok": False, "code": code, "error": error, "next_action": entry.next_action, **fields}
 
 
+def code_of(exc: BaseException) -> str:
+    """An exception's `code` if it is registered, else `unexpected`."""
+    code = getattr(exc, "code", None)
+    return code if code in CODES else "unexpected"
+
+
 def from_exception(exc: BaseException) -> dict:
     """The failed result for an exception: its class `code` if registered, else `unexpected`."""
-    code = getattr(exc, "code", None)
-    return fail(code if code in CODES else "unexpected", f"{type(exc).__name__}: {exc}")
+    return fail(code_of(exc), f"{type(exc).__name__}: {exc}")
 
 
 # Brief mode. Only these keys of these commands are ever replaced by a stub, and only when their JSON is

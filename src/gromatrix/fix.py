@@ -355,7 +355,8 @@ def main(argv: list[str] | None = None) -> int:
             results.append(fix_one(p, outdir, a))
         except Exception as e:
             (outdir / f"{p.stem.upper()}.error.txt").write_text(traceback.format_exc())
-            failed.append({"id": p.stem.upper(), "error": f"{type(e).__name__}: {str(e)[:300]}"})
+            err = f"{type(e).__name__}: {str(e)[:300]}"
+            failed.append({"id": p.stem.upper(), "code": result.code_of(e), "error": err})
     out = {"ok": not failed, "fixed": results, "failed": failed}
     return result.finish(out, command="fix", out_dir=a.batch_dir / layout.CONFIG, full=a.full)
 

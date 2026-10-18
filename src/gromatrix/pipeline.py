@@ -335,7 +335,7 @@ def execute(steps: list[Step], raw: dict, root: Path, b: Path, a: argparse.Names
             try:
                 path, n = derive_manifest(raw, root, b)
             except ValueError as e:
-                s.result = {"status": "failed", "ok": False, "error": str(e)}
+                s.result = {"status": "failed", **result.fail("manifest_invalid", str(e))}
                 failed.append(s.stage)
                 emit({**rec, "status": "failed", "result": s.result})
                 continue
