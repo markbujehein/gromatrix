@@ -32,10 +32,9 @@ from .forcefields import ForceField, ForcefieldMismatch, acquire_lock, assert_sa
 from .gmx import ToolError, data_prefix, gmx_cmd, gmxlib_env, ion_atom_names, locate_ff_dir, run
 from .ligands import LigandSpec, parameterise, pose_coords
 from .pdbio import ION_RES, GroAtom, classify, read_gro, read_pdb, residue_block, write_gro, write_pdb
-from .result import CodedError
 
 
-class MatrixIncomplete(CodedError, ValueError):
+class MatrixIncomplete(result.CodedError, ValueError):
     """An enzyme x target pair has no docked complex."""
 
     code = "matrix_incomplete"
@@ -532,6 +531,15 @@ def build_facts(stamps: dict[str, dict]) -> dict:
 BUILD_OPTIONS = ("box", "pad", "conc", "temp", "md_ns", "maxwarn")
 
 
+def build_receipt(a, ff: ForceField, stamps: dict[str, dict]) -> dict:
+    """The `applied` block of a build. An alias (`amber`) is not a change when it names the locked forcefield."""
+    opts = {k: getattr(a, k) for k in BUILD_OPTIONS} | {"forcefield": a.forcefield}
+    out = result.receipt(opts, opts | {"forcefield": ff.key}, {"forcefield": ff.key, **build_facts(stamps)})
+    if a.forcefield:
+        out["options"]["forcefield"]["changed"] = resolve(a.forcefield).key != ff.key
+    return out
+
+
 def cmd_build(a) -> dict:
     m = load_manifest(a.manifest, a.allow_incomplete)
     if a.forcefield and m.forcefield and resolve(a.forcefield).key != resolve(m.forcefield).key:
@@ -552,15 +560,16 @@ def cmd_build(a) -> dict:
         except Exception as e:  # keep going; report per system
             layout.system_dir(ctx.batch, sd.id).mkdir(parents=True, exist_ok=True)
             (layout.system_dir(ctx.batch, sd.id) / "error.txt").write_text(traceback.format_exc())
-            results.append({"id": sd.id, "role": sd.role, "status": "failed", "error": str(e)[:400]})
+            results.append(
+                {"id": sd.id, "role": sd.role, "status": "failed", "code": result.code_of(e), "error": str(e)[:400]}
+            )
     (ctx.batch / layout.MATRIX).parent.mkdir(parents=True, exist_ok=True)
     (ctx.batch / layout.MATRIX).write_text(
         json.dumps({"forcefield": ff.identity(), "missing_pairs": m.missing_pairs, "systems": results}, indent=2)
     )
-    opts = {k: getattr(a, k) for k in BUILD_OPTIONS} | {"forcefield": a.forcefield}
     return {
         "ok": all(r["status"] == "ok" for r in results),
-        "applied": result.receipt(opts, opts | {"forcefield": ff.key}, {"forcefield": ff.key, **build_facts(stamps)}),
+        "applied": build_receipt(a, ff, stamps),
         "forcefield": ff.key,
         "built": sum(r["status"] == "ok" for r in results),
         "failed": [r for r in results if r["status"] != "ok"],

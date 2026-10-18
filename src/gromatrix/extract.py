@@ -45,14 +45,13 @@ from scipy.spatial import cKDTree
 
 from . import altlocs, layout, result
 from .pdbio import ION_RES, WATER_RES, Atom, read_pdb, residues, write_pdb
-from .result import CodedError
 from .structure import POLYMER_RES, compose, entities_by_sequence, is_identity
 
 CHAIN_POOL = string.ascii_uppercase + string.digits + string.ascii_lowercase
 MAX_COMBOS = 20000
 
 
-class ExtractionError(CodedError):
+class ExtractionError(result.CodedError):
     code = "extract_failed"
 
 
@@ -693,7 +692,8 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as e:
             (outdir / p.stem.upper()).mkdir(parents=True, exist_ok=True)
             (outdir / p.stem.upper() / "error.txt").write_text(traceback.format_exc())
-            failed.append({"id": p.stem.upper(), "error": f"{type(e).__name__}: {str(e)[:400]}"})
+            err = f"{type(e).__name__}: {str(e)[:400]}"
+            failed.append({"id": p.stem.upper(), "code": result.code_of(e), "error": err})
     out = {"ok": not failed, "units": results, "failed": failed}
     return result.finish(out, command="extract", out_dir=a.batch_dir / layout.CONFIG, full=a.full)
 

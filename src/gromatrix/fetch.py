@@ -175,7 +175,9 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 done.append(r)
         except HTTPError as e:
-            failed.append({"id": pid, "error": "not found / obsolete" if e.status == 404 else str(e)})
+            failed.append(
+                {"id": pid, "code": result.code_of(e), "error": "not found / obsolete" if e.status == 404 else str(e)}
+            )
     summary = {
         "ok": not failed,
         "query": a.query or a.uniprot,

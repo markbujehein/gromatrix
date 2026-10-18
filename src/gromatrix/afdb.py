@@ -339,7 +339,7 @@ def main(argv: list[str] | None = None) -> int:
             auto = {} if manual and set(manual) >= set(chains) else sifts_map(pid, cache.dir)
         except HTTPError as e:
             auto = {}
-            failed.append({"id": pid, "error": f"SIFTS lookup failed ({e}); pass --uniprot"})
+            failed.append({"id": pid, "code": result.code_of(e), "error": f"SIFTS lookup failed ({e}); pass --uniprot"})
         details = {}
         for ch, ca in chains.items():
             acc = manual.get(ch) or auto.get(origin.get(ch, ch))
@@ -354,7 +354,7 @@ def main(argv: list[str] | None = None) -> int:
                     row["status"] = "flagged" if row["flags"] else "ok"
                 except (HTTPError, LookupError) as e:
                     row["status"] = f"error: {e}"
-                    failed.append({"id": pid, "chain": ch, "error": str(e)[:200]})
+                    failed.append({"id": pid, "chain": ch, "code": result.code_of(e), "error": str(e)[:200]})
             details[ch] = row
             rows.append(row)
             if row["status"] == "flagged":

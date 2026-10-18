@@ -315,13 +315,14 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 r = relax_file(f, a.batch_dir / a.out / u.name / f.name, family, a)
             except Exception as e:
-                r = {"status": "failed", "failure": "error", "reason": f"{type(e).__name__}: {str(e)[:300]}"}
+                why = f"{type(e).__name__}: {str(e)[:300]}"
+                r = {"status": "failed", "failure": "error", "code": result.code_of(e), "reason": why}
                 (a.batch_dir / a.out / u.name).mkdir(parents=True, exist_ok=True)
                 (a.batch_dir / a.out / u.name / f"{f.stem}.error.txt").write_text(traceback.format_exc())
             report[f.name] = r
             brief = {
                 k: r.get(k)
-                for k in ("status", "failure", "rmsd_heavy", "drop_kj_per_atom", "pocket_min_dist")
+                for k in ("status", "failure", "code", "rmsd_heavy", "drop_kj_per_atom", "pocket_min_dist")
                 if r.get(k) is not None
             }
             (failed if r["status"] == "failed" else results).append({"id": u.name, "file": f.name, **brief})

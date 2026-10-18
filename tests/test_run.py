@@ -269,5 +269,6 @@ def test_run_result_reports_what_was_applied(batch, capsys):
     assert _run(batch) == 0
     last = json.loads(capsys.readouterr().out.splitlines()[-1])
     assert list(last)[:2] == ["ok", "applied"]
-    assert last["applied"]["options"]["deffnm"] == {"passed": "md", "used": "md", "changed": False}
+    assert last["applied"]["options"] == {}  # run uses every option as given: nothing to compare
+
     assert last["applied"]["facts"]["systems"] == {"S1": "done"}

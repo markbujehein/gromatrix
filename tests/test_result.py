@@ -39,9 +39,9 @@ def test_from_exception_without_code_is_unexpected():
 
 def test_from_exception_uses_a_registered_class_code():
     class Custom(RuntimeError):
-        code = "unexpected"
+        code = "batch_missing"
 
-    assert result.from_exception(Custom("x"))["code"] == "unexpected"
+    assert result.from_exception(Custom("x"))["code"] == "batch_missing"
 
 
 def test_from_exception_ignores_an_unregistered_code():
@@ -234,3 +234,64 @@ def test_each_stub_call_writes_its_own_file(tmp_path):
     a = result.stub_large({"ok": True, "units": BIG}, "extract", tmp_path)["units"]["file"]
     b = result.stub_large({"ok": True, "units": BIG}, "extract", tmp_path)["units"]["file"]
     assert a != b and Path(a).exists() and Path(b).exists()
+
+
+def test_build_receipt_does_not_flag_an_alias_as_changed():
+    from types import SimpleNamespace
+
+    from gromatrix import forcefields, gmx_prep
+
+    a = SimpleNamespace(box="dodecahedron", pad=1.0, conc=0.15, temp=300, md_ns=100, maxwarn=0, forcefield="amber")
+    out = gmx_prep.build_receipt(a, forcefields.resolve("amber"), {})
+    assert out["options"]["forcefield"] == {"passed": "amber", "used": "amber99sb-ildn", "changed": False}
+    assert out["facts"]["forcefield"] == "amber99sb-ildn"
+
+
+def test_build_receipt_flags_a_really_different_value():
+    from types import SimpleNamespace
+
+    from gromatrix import forcefields, gmx_prep
+
+    a = SimpleNamespace(box="dodecahedron", pad=1.0, conc=0.15, temp=300, md_ns=100, maxwarn=0, forcefield="charmm")
+    out = gmx_prep.build_receipt(a, forcefields.resolve("amber"), {})
+    assert out["options"]["forcefield"]["changed"] is True
+
+
+def test_code_of_an_exception_is_its_registered_code_or_unexpected():
+    assert result.code_of(result.CodedError("x", code="batch_missing")) == "batch_missing"
+    assert result.code_of(ValueError("x")) == "unexpected"
+
+
+def _boom(exc):
+    def raiser(*a, **k):
+        raise exc
+
+    return raiser
+
+
+def test_fix_failed_item_carries_its_own_code(tmp_path, monkeypatch, capsys):
+    from gromatrix import checks, fix
+
+    (tmp_path / "01-raw").mkdir()
+    (tmp_path / "01-raw" / "1abc.pdb").write_text("")
+    monkeypatch.setattr(fix, "fix_one", _boom(checks.CheckError("bad")))
+    assert fix.main(["--batch-dir", str(tmp_path)]) == 1
+    assert json.loads(capsys.readouterr().out)["failed"][0]["code"] == "check_failed"
+
+
+def test_extract_failed_item_carries_its_own_code(tmp_path, monkeypatch, capsys):
+    from gromatrix import extract
+
+    (tmp_path / "02-fixed").mkdir()
+    (tmp_path / "02-fixed" / "1abc.pdb").write_text("")
+    monkeypatch.setattr(extract, "extract_one", _boom(extract.ExtractionError("no unit")))
+    assert extract.main(["--batch-dir", str(tmp_path)]) == 1
+    assert json.loads(capsys.readouterr().out)["failed"][0]["code"] == "extract_failed"
+
+
+def test_fetch_failed_item_carries_its_own_code(tmp_path, monkeypatch, capsys):
+    from gromatrix import fetch, net
+
+    monkeypatch.setattr(fetch, "fetch_one", _boom(net.HTTPError("u", 404, "gone")))
+    assert fetch.main(["--batch-dir", str(tmp_path), "--ids", "1ABC"]) == 1
+    assert json.loads(capsys.readouterr().out)["failed"][0]["code"] == "fetch_http"

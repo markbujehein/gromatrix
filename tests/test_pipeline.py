@@ -200,3 +200,12 @@ def test_result_line_is_the_json_with_ok():
     assert pipeline._result('{"step": "run", "phase": "md"}') is None
     assert pipeline._result('{"ok": false, "error": "a \\"step\\" failed"}')["ok"] is False
     assert pipeline._result("not json") is None
+
+
+def test_a_bad_derived_manifest_reports_manifest_invalid(tmp_path, capsys, monkeypatch):
+    p = _manifest(tmp_path, steps={"fetch": {"ids": ["1XVP"]}})
+    monkeypatch.setattr(pipeline, "call", lambda step: {"ok": True})
+    assert pipeline.main(["--manifest", str(p)]) == 1
+    lines = [json.loads(x) for x in capsys.readouterr().out.splitlines()]
+    failed = [x for x in lines if x.get("status") == "failed"]
+    assert failed and failed[0]["result"]["code"] == "manifest_invalid"
