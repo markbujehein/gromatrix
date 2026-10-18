@@ -25,13 +25,19 @@ from pathlib import Path
 
 import yaml
 
-from . import checks, layout
+from . import checks, layout, result
 from . import mdp as mdpmod
 from . import topology as topo
 from .forcefields import ForceField, ForcefieldMismatch, acquire_lock, assert_same, load_lock, resolve
 from .gmx import ToolError, data_prefix, gmx_cmd, gmxlib_env, ion_atom_names, locate_ff_dir, run
 from .ligands import LigandSpec, parameterise, pose_coords
 from .pdbio import ION_RES, GroAtom, classify, read_gro, read_pdb, residue_block, write_gro, write_pdb
+
+
+class MatrixIncomplete(result.CodedError, ValueError):
+    """An enzyme x target pair has no docked complex."""
+
+    code = "matrix_incomplete"
 
 
 # ----------------------------------------------------------------- manifest
@@ -80,7 +86,7 @@ def load_manifest(path: Path, allow_incomplete: bool) -> Manifest:
     pairs = {(e, t) for e, t, _v in complexes}
     missing = [f"{e}__{t}" for e in enzymes for t in targets if (e, t) not in pairs]
     if missing and not allow_incomplete:
-        raise ValueError(
+        raise MatrixIncomplete(
             f"matrix incomplete - no docked complex for {missing}; "
             "every enzyme must be paired with every target (or pass --allow-incomplete)"
         )
@@ -508,6 +514,32 @@ def cmd_plan(a) -> dict:
     }
 
 
+def build_facts(stamps: dict[str, dict]) -> dict:
+    """Per-system figures from the system.json stamps (only keys the stamp really holds)."""
+    # input_ions: crystallographic ions kept from the input PDB, not the ions genion added
+    facts: dict[str, dict] = {"atoms": {}, "solute_charge": {}, "input_ions": {}}
+    for sid, st in stamps.items():
+        if "atoms" in st:
+            facts["atoms"][sid] = st["atoms"]
+        if "solute_charge" in st:
+            facts["solute_charge"][sid] = st["solute_charge"]
+        if "ions" in st.get("components", {}):
+            facts["input_ions"][sid] = len(st["components"]["ions"])
+    return {k: v for k, v in facts.items() if v}
+
+
+BUILD_OPTIONS = ("box", "pad", "conc", "temp", "md_ns", "maxwarn")
+
+
+def build_receipt(a, ff: ForceField, stamps: dict[str, dict]) -> dict:
+    """The `applied` block of a build. An alias (`amber`) is not a change when it names the locked forcefield."""
+    opts = {k: getattr(a, k) for k in BUILD_OPTIONS} | {"forcefield": a.forcefield}
+    out = result.receipt(opts, opts | {"forcefield": ff.key}, {"forcefield": ff.key, **build_facts(stamps)})
+    if a.forcefield:
+        out["options"]["forcefield"]["changed"] = resolve(a.forcefield).key != ff.key
+    return out
+
+
 def cmd_build(a) -> dict:
     m = load_manifest(a.manifest, a.allow_incomplete)
     if a.forcefield and m.forcefield and resolve(a.forcefield).key != resolve(m.forcefield).key:
@@ -515,25 +547,29 @@ def cmd_build(a) -> dict:
     ff = acquire_lock(a.batch_dir, a.forcefield or m.forcefield)
     ff_dir = locate_ff_dir(ff.gmx_name, a.gmx, [a.batch_dir.resolve()])
     ctx = Ctx(a.batch_dir.resolve(), ff, ff_dir, a.gmx, a, m.ligands)
-    results = []
+    results, stamps = [], {}
     for sd in m.systems:
         if a.only and sd.id not in a.only:
             continue
         try:
             st = build_system(sd, ctx)
+            stamps[sd.id] = st
             results.append({"id": sd.id, "role": sd.role, "status": "ok", "warnings": st["warnings"]})
         except ForcefieldMismatch:
             raise
         except Exception as e:  # keep going; report per system
             layout.system_dir(ctx.batch, sd.id).mkdir(parents=True, exist_ok=True)
             (layout.system_dir(ctx.batch, sd.id) / "error.txt").write_text(traceback.format_exc())
-            results.append({"id": sd.id, "role": sd.role, "status": "failed", "error": str(e)[:400]})
+            results.append(
+                {"id": sd.id, "role": sd.role, "status": "failed", "code": result.code_of(e), "error": str(e)[:400]}
+            )
     (ctx.batch / layout.MATRIX).parent.mkdir(parents=True, exist_ok=True)
     (ctx.batch / layout.MATRIX).write_text(
         json.dumps({"forcefield": ff.identity(), "missing_pairs": m.missing_pairs, "systems": results}, indent=2)
     )
     return {
         "ok": all(r["status"] == "ok" for r in results),
+        "applied": build_receipt(a, ff, stamps),
         "forcefield": ff.key,
         "built": sum(r["status"] == "ok" for r in results),
         "failed": [r for r in results if r["status"] != "ok"],
@@ -714,9 +750,8 @@ def main(argv: list[str] | None = None) -> int:
             a
         )
     except Exception as e:  # every failure is reported as the one-line JSON contract, never a traceback
-        out = {"ok": False, "error": f"{type(e).__name__}: {e}"}
-    print(json.dumps(out))
-    return 0 if out.get("ok") else 1
+        out = result.from_exception(e)
+    return result.finish(out)
 
 
 if __name__ == "__main__":

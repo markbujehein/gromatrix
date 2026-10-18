@@ -47,10 +47,10 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
-from . import checks, layout
+from . import checks, layout, result
 from . import mdp as mdpmod
 from .forcefields import load_lock
 from .gmx import ToolError, gmx_cmd, gmxlib_env, locate_ff_dir, run, tool_env
@@ -79,7 +79,7 @@ MIN_MAXH = 0.01  # h; below this, starting another mdrun is pointless
 
 
 def now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def emit(rec: dict) -> None:
@@ -129,8 +129,8 @@ def nsteps_of(wd: Path, phase: Phase) -> int:
 
 
 # ------------------------------------------------------------------ execution
-class Interrupted(RuntimeError):
-    pass
+class Interrupted(result.CodedError):
+    code = "run_interrupted"
 
 
 class Runner:
@@ -249,7 +249,8 @@ class Runner:
             if not em["converged"]:
                 raise checks.CheckError(
                     f"EM did not converge (Fmax={em['fmax']}, Epot={em['epot']}, emtol={tol}); "
-                    "look for clashes or a bad ligand pose"
+                    "look for clashes or a bad ligand pose",
+                    code="em_not_converged",
                 )
             return []
         scan = checks.scan_md_log(log)
@@ -493,13 +494,16 @@ def background(b: Path, argv: list[str]) -> dict:
 
 
 # ------------------------------------------------------------------ CLI
+RUN_OPTIONS = ("deffnm", "threads", "gpu_id", "maxh", "mdrun_args", "force")
+
+
 def cmd_run(a: argparse.Namespace, argv: list[str]) -> dict:
     b: Path = a.batch_dir
     if not (b / layout.SYSTEMS).is_dir():
         raise FileNotFoundError(f"{b}/systems not found: build the systems first (gromatrix-gmx build)")
     picked, skipped = runnable(b, a.only, a.force)
     if not picked:
-        return {"ok": False, "error": "no runnable systems", "skipped": skipped}
+        return result.fail("input_missing", "no runnable systems", skipped=skipped)
     if a.slurm:
         script = write_slurm(b, [wd.name for wd, _ in picked], a)
         return {
@@ -547,8 +551,10 @@ def cmd_run(a: argparse.Namespace, argv: list[str]) -> dict:
     }
     (b / layout.BATCH_RUN).parent.mkdir(parents=True, exist_ok=True)
     atomic_write(b / layout.BATCH_RUN, json.dumps(summary, indent=2))
+    opts = {k: getattr(a, k) for k in RUN_OPTIONS}  # run uses each as given, so no `used` values: facts only
     return {
         "ok": all(r["status"] == "done" for r in results),
+        "applied": result.receipt(opts, {}, {"systems": {r["id"]: r["status"] for r in results}}),
         "done": [r["id"] for r in results if r["status"] == "done"],
         "failed": [r for r in results if r["status"] == "failed"],
         "interrupted": [r["id"] for r in results if r["status"] == "interrupted"],
@@ -591,9 +597,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         out = cmd_run(a, argv)
     except Exception as e:  # every failure is reported as the one-line JSON contract, never a traceback
-        out = {"ok": False, "error": f"{type(e).__name__}: {e}"}
-    print(json.dumps(out), flush=True)
-    return 0 if out.get("ok") else 1
+        out = result.from_exception(e)
+    return result.finish(out, flush=True)
 
 
 if __name__ == "__main__":

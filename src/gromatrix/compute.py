@@ -28,7 +28,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from . import layout
+from . import layout, result
 
 MODES = ("local", "slurm", "remote")
 DEFAULTS = {
@@ -83,6 +83,7 @@ def run_args(cfg: dict) -> list[str]:
     return a
 
 
+@result.guarded
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="gromatrix-compute", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -104,8 +105,7 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
 
     if a.cmd == "detect":
-        print(json.dumps({"ok": True, **detect()}))
-        return 0
+        return result.finish({"ok": True, **detect()})
     cfg = load(a.batch_dir)
     if a.cmd == "set":
         cfg = {**DEFAULTS, **{k: v for k, v in vars(a).items() if k in DEFAULTS and v is not None}}
@@ -113,14 +113,14 @@ def main(argv: list[str] | None = None) -> int:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(cfg, indent=2) + "\n")
     if cfg is None:
-        print(json.dumps({"ok": False, "error": f"no {layout.COMPUTE}; run `gromatrix-compute set --mode ...`"}))
-        return 1
+        return result.finish(
+            result.fail("compute_unset", f"no {layout.COMPUTE}; run `gromatrix-compute set --mode ...`")
+        )
     out = {"ok": True, "compute": cfg}
     if a.cmd == "run-args":
         out["args"] = run_args(cfg)
         out["submit"] = cfg["mode"] == "slurm"  # remote: copy the batch and submit on the other machine
-    print(json.dumps(out))
-    return 0
+    return result.finish(out)
 
 
 if __name__ == "__main__":

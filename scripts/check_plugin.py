@@ -20,9 +20,9 @@ import argparse
 import json
 import re
 import sys
+import tomllib
 from pathlib import Path
 
-import tomllib
 import yaml
 
 SKILL_KEYS = {"name", "description", "license", "allowed-tools", "metadata", "compatibility"}

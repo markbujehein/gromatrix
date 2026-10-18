@@ -39,3 +39,5 @@ TM-align in validation, see `benchmarks/`), `lddt_ca` (local, superposition-free
 TM < `--tm-min`, lDDT < `--lddt-min`, identity < 0.9. Chains shorter than `--min-length` are listed
 but not scored. Outputs: `05-alphafold/af_report.csv`, `05-alphafold/<ID>.json`, superposed models `05-alphafold/<ID>/AF_<chain>_<acc>.pdb`.
 
+
+Every result line also carries `code`, `next_action` and, for build and run, `applied`: see `references/result-envelope.md`.

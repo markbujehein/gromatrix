@@ -4,7 +4,7 @@
   <a href="https://github.com/markbujehein/gromatrix/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/markbujehein/gromatrix/actions/workflows/ci.yml/badge.svg?branch=main"></a>
   <a href="https://codecov.io/gh/markbujehein/gromatrix"><img alt="coverage" src="https://codecov.io/gh/markbujehein/gromatrix/graph/badge.svg"></a>
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-green"></a>
-  <a href="pixi.toml"><img alt="python" src="https://img.shields.io/badge/python-3.10%20%7C%203.12%20%7C%203.13-blue"></a>
+  <a href="pixi.toml"><img alt="python" src="https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue"></a>
 </p>
 
 **From PDB IDs to a comparable set of GROMACS simulations, with one forcefield and with every
@@ -343,7 +343,7 @@ pixi run lint        # ruff check + format check (tiny env, no science stack)
 pixi run check       # lint + syntax (ruff), plugin validation, fast tests: what CI checks
 pixi run fix         # auto-fix what ruff can (safe fixes + formatting), then run check again
 pixi run hooks       # install the pre-commit / pre-push git hooks
-pixi run test-all    # what CI runs; also: pixi run -e py310 test-all / -e py313
+pixi run test-all    # what CI runs; also: pixi run -e py311 test-all / -e py313
 pixi run -e skills check-plugin     # validate plugin.json, marketplace.json, skills/ and agents/
 pixi shell -e md     # adds GROMACS / acpype / Open Babel for real step F–H runs
 ```
@@ -355,7 +355,7 @@ rewrite your files.
 
 CI (`.github/workflows/ci.yml`) has three jobs:
 - **lint:** Ruff.
-- **tests:** with coverage, on Python 3.12 for pull requests, and on 3.10 / 3.12 / 3.13 for
+- **tests:** with coverage, on Python 3.12 for pull requests, and on 3.11 / 3.12 / 3.13 for
   pushes.
 - **plugin:** validates the plugin manifest, skills, agents and hooks.
 

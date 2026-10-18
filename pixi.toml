@@ -15,7 +15,7 @@ platforms = ["linux-64", "osx-64", "osx-arm64"]
 
 # ---------------------------------------------------------------- runtime (steps A-E; F-G drive external GROMACS)
 [dependencies]
-python = ">=3.10"
+python = ">=3.11"
 numpy = ">=1.24"
 scipy = ">=1.10"
 biopython = ">=1.80"
@@ -83,13 +83,13 @@ pyyaml = ">=6"
 [feature.skills.tasks]
 check-plugin = { cmd = "python scripts/check_plugin.py", description = "validate plugin.json, marketplace.json, skills/, agents/ and ${CLAUDE_PLUGIN_ROOT} paths" }
 
-# Python versions: 3.12 is canonical (PRs); 3.10/3.13 are the compatibility edges
-# of `requires-python = ">=3.10"`, tested only on pushes to main/dev.
+# Python versions: 3.12 is canonical (PRs); 3.11/3.13 are the compatibility edges
+# of `requires-python = ">=3.11"`, tested only on pushes to main/dev.
 [feature.py312.dependencies]
 python = "3.12.*"
 
-[feature.py310.dependencies]
-python = "3.10.*"
+[feature.py311.dependencies]
+python = "3.11.*"
 
 [feature.py313.dependencies]
 python = "3.13.*"
@@ -109,6 +109,6 @@ networkx = "*"
 default = { features = ["py312", "analysis", "test"], solve-group = "default" }
 lint = { features = ["lint"], no-default-feature = true }
 skills = { features = ["skills"], no-default-feature = true }
-py310 = { features = ["py310", "analysis", "test"] }
+py311 = { features = ["py311", "analysis", "test"] }
 py313 = { features = ["py313", "analysis", "test"] }
 md = { features = ["py312", "analysis", "md", "test"], solve-group = "default" }

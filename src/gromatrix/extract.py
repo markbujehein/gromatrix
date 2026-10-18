@@ -43,7 +43,7 @@ from pathlib import Path
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import altlocs, layout
+from . import altlocs, layout, result
 from .pdbio import ION_RES, WATER_RES, Atom, read_pdb, residues, write_pdb
 from .structure import POLYMER_RES, compose, entities_by_sequence, is_identity
 
@@ -51,8 +51,8 @@ CHAIN_POOL = string.ascii_uppercase + string.digits + string.ascii_lowercase
 MAX_COMBOS = 20000
 
 
-class ExtractionError(RuntimeError):
-    pass
+class ExtractionError(result.CodedError):
+    code = "extract_failed"
 
 
 @dataclass
@@ -649,6 +649,7 @@ def extract_one(pdb: Path, out_root: Path, a) -> dict:
     }
 
 
+@result.guarded
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="gromatrix-extract", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -674,6 +675,7 @@ def main(argv: list[str] | None = None) -> int:
         help="target ligands with alternate conformers: branch only distinct ones (auto), "
         "always branch, or always use the primary conformer",
     )
+    result.add_full_flag(ap)
     a = ap.parse_args(argv)
 
     indir, outdir = a.batch_dir / a.indir, a.batch_dir / a.out
@@ -682,8 +684,7 @@ def main(argv: list[str] | None = None) -> int:
         want = {i.upper() for i in a.ids}
         files = [p for p in files if p.stem.upper() in want]
     if not files:
-        print(json.dumps({"ok": False, "error": f"no fixed structures in {indir}"}))
-        return 1
+        return result.finish(result.fail("input_missing", f"no fixed structures in {indir}"))
     results, failed = [], []
     for p in files:
         try:
@@ -691,9 +692,10 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as e:
             (outdir / p.stem.upper()).mkdir(parents=True, exist_ok=True)
             (outdir / p.stem.upper() / "error.txt").write_text(traceback.format_exc())
-            failed.append({"id": p.stem.upper(), "error": f"{type(e).__name__}: {str(e)[:400]}"})
-    print(json.dumps({"ok": not failed, "units": results, "failed": failed}))
-    return 0 if not failed else 1
+            err = f"{type(e).__name__}: {str(e)[:400]}"
+            failed.append({"id": p.stem.upper(), "code": result.code_of(e), "error": err})
+    out = {"ok": not failed, "units": results, "failed": failed}
+    return result.finish(out, command="extract", out_dir=a.batch_dir / layout.CONFIG, full=a.full)
 
 
 if __name__ == "__main__":

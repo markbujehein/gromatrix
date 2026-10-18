@@ -39,7 +39,7 @@ from pathlib import Path
 import numpy as np
 from openmm.unit import angstrom
 
-from . import altlocs, layout
+from . import altlocs, layout, result
 from .pdbio import ION_RES, WATER_RES, read_pdb, residues, write_pdb
 from .structure import POLYMER_RES, read_metadata, read_raw_atoms
 
@@ -317,6 +317,7 @@ def fix_one(path: Path, out_dir: Path, args) -> dict:
     }
 
 
+@result.guarded
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="gromatrix-fix", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -337,6 +338,7 @@ def main(argv: list[str] | None = None) -> int:
         default=0.5,
         help="Å; symmetry-corrected RMSD at which alternate conformers count as distinct poses",
     )
+    result.add_full_flag(ap)
     a = ap.parse_args(argv)
 
     indir, outdir = a.batch_dir / a.indir, a.batch_dir / a.out
@@ -346,17 +348,17 @@ def main(argv: list[str] | None = None) -> int:
         want = {i.upper() for i in a.ids}
         files = [p for p in files if p.stem.upper() in want]
     if not files:
-        print(json.dumps({"ok": False, "error": f"no structures in {indir}"}))
-        return 1
+        return result.finish(result.fail("input_missing", f"no structures in {indir}"))
     results, failed = [], []
     for p in files:
         try:
             results.append(fix_one(p, outdir, a))
         except Exception as e:
             (outdir / f"{p.stem.upper()}.error.txt").write_text(traceback.format_exc())
-            failed.append({"id": p.stem.upper(), "error": f"{type(e).__name__}: {str(e)[:300]}"})
-    print(json.dumps({"ok": not failed, "fixed": results, "failed": failed}))
-    return 0 if not failed else 1
+            err = f"{type(e).__name__}: {str(e)[:300]}"
+            failed.append({"id": p.stem.upper(), "code": result.code_of(e), "error": err})
+    out = {"ok": not failed, "fixed": results, "failed": failed}
+    return result.finish(out, command="fix", out_dir=a.batch_dir / layout.CONFIG, full=a.full)
 
 
 if __name__ == "__main__":
