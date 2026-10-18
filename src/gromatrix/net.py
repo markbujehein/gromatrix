@@ -11,8 +11,10 @@ import os
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
+
+from .result import CodedError
 
 USER_AGENT = "gromatrix/0.2 (+https://github.com/markbujehein/gromatrix)"
 RETRY_STATUS = {429, 500, 502, 503, 504}
@@ -29,7 +31,7 @@ def _retry_after(value: str | None, default: float) -> float:
         from email.utils import parsedate_to_datetime
 
         try:
-            wait = (parsedate_to_datetime(value) - datetime.now(timezone.utc)).total_seconds()
+            wait = (parsedate_to_datetime(value) - datetime.now(UTC)).total_seconds()
         except (TypeError, ValueError):
             wait = default
     return min(max(wait, 0.0), MAX_WAIT)
@@ -42,7 +44,9 @@ def atomic_write(path: Path, text: str) -> None:
     os.replace(tmp, path)
 
 
-class HTTPError(RuntimeError):
+class HTTPError(CodedError):
+    code = "fetch_http"
+
     def __init__(self, url: str, status: int | None, msg: str):
         super().__init__(f"{status or 'network'} for {url}: {msg}")
         self.url, self.status = url, status
@@ -130,7 +134,7 @@ class Cache:
             "url": url,
             "sha256": sha256(f),
             "bytes": f.stat().st_size,
-            "fetched": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "fetched": datetime.now(UTC).isoformat(timespec="seconds"),
             **(extra or {}),
         }
         self.save()

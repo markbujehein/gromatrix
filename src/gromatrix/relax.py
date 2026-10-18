@@ -46,7 +46,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import layout
+from . import layout, result
 from .forcefields import ForcefieldMismatch, acquire_lock, lock_path, resolve
 from .pdbio import ION_RES, PROTEIN_RES, Atom, read_pdb, write_pdb
 
@@ -256,6 +256,7 @@ def _family(a) -> str:
     return resolve(a.forcefield).family if a.forcefield else "amber"
 
 
+@result.guarded
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="gromatrix-relax", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -285,21 +286,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument("--pocket-cutoff", type=float, default=5.0, help="Å around HETs kept restrained in stage 2")
     ap.add_argument("--platform", default="auto")
+    result.add_full_flag(ap)
     a = ap.parse_args(argv)
 
     try:
         family = _family(a)
     except (ForcefieldMismatch, KeyError) as e:
-        print(json.dumps({"ok": False, "error": f"{type(e).__name__}: {e}"}))
-        return 1
+        return result.finish(result.from_exception(e))
     units = (
         sorted(p for p in (a.batch_dir / a.indir).iterdir() if p.is_dir()) if (a.batch_dir / a.indir).exists() else []
     )
     if a.ids:
         units = [u for u in units if u.name.upper() in {i.upper() for i in a.ids}]
     if not units:
-        print(json.dumps({"ok": False, "error": f"no unit directories in {a.batch_dir / a.indir}"}))
-        return 1
+        return result.finish(result.fail("input_missing", f"no unit directories in {a.batch_dir / a.indir}"))
     results, failed = [], []
     for u in units:
         files = sorted(
@@ -315,13 +315,14 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 r = relax_file(f, a.batch_dir / a.out / u.name / f.name, family, a)
             except Exception as e:
-                r = {"status": "failed", "failure": "error", "reason": f"{type(e).__name__}: {str(e)[:300]}"}
+                why = f"{type(e).__name__}: {str(e)[:300]}"
+                r = {"status": "failed", "failure": "error", "code": result.code_of(e), "reason": why}
                 (a.batch_dir / a.out / u.name).mkdir(parents=True, exist_ok=True)
                 (a.batch_dir / a.out / u.name / f"{f.stem}.error.txt").write_text(traceback.format_exc())
             report[f.name] = r
             brief = {
                 k: r.get(k)
-                for k in ("status", "failure", "rmsd_heavy", "drop_kj_per_atom", "pocket_min_dist")
+                for k in ("status", "failure", "code", "rmsd_heavy", "drop_kj_per_atom", "pocket_min_dist")
                 if r.get(k) is not None
             }
             (failed if r["status"] == "failed" else results).append({"id": u.name, "file": f.name, **brief})
@@ -336,8 +337,8 @@ def main(argv: list[str] | None = None) -> int:
                 indent=1,
             )
         )
-    print(json.dumps({"ok": not failed, "family": family, "relaxed": results, "failed": failed}))
-    return 0 if not failed else 1
+    out = {"ok": not failed, "family": family, "relaxed": results, "failed": failed}
+    return result.finish(out, command="relax", out_dir=a.batch_dir / layout.CONFIG, full=a.full)
 
 
 if __name__ == "__main__":

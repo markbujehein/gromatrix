@@ -23,13 +23,14 @@ from pathlib import Path
 from . import topology as topo
 from .forcefields import ForceField, assert_same
 from .gmx import ToolError, run
+from .result import CodedError
 
 ORGANIC = {"H", "C", "N", "O", "S", "P", "F", "Cl", "Br", "I"}
 CGENFF_PENALTY_LIMIT = 50.0
 
 
-class LigandError(RuntimeError):
-    pass
+class LigandError(CodedError):
+    code = "ligand_invalid"
 
 
 @dataclass

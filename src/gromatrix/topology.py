@@ -6,6 +6,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from .result import CodedError
+
 SECTION_RE = re.compile(r"^\s*\[\s*([\w-]+)\s*\]")
 # Sections that define types and must precede every [ moleculetype ].
 PARAM_SECTIONS = (
@@ -20,8 +22,8 @@ PARAM_SECTIONS = (
 )
 
 
-class TopologyError(RuntimeError):
-    pass
+class TopologyError(CodedError):
+    code = "topology_invalid"
 
 
 def _norm(line: str) -> str:

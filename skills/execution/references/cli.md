@@ -62,3 +62,5 @@ that exits non-zero is `failed`, never `interrupted`, whatever an older log segm
   `reason`, `trajectory`.
 - `B/07-run-logs/run.json`: the last invocation (foreground summary including `only`, or the background pid/log).
 - `gromatrix-status` reports a `running` system whose runner died on this host as `interrupted`.
+
+Every result line also carries `code`, `next_action` and, for build and run, `applied`: see `references/result-envelope.md`.

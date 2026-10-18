@@ -22,12 +22,11 @@
 from __future__ import annotations
 
 import argparse
-import json
 import re
 import sys
 from pathlib import Path
 
-from . import layout
+from . import layout, result
 from .net import Cache, HTTPError, get_json
 
 FILES = "https://files.rcsb.org/download/{id}.{ext}.gz"
@@ -135,6 +134,7 @@ def fetch_one(pid: str, fmt: str, cache: Cache, check_updates: bool) -> dict:
     return out
 
 
+@result.guarded
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="gromatrix-fetch", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -150,6 +150,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--format", default="cif", choices=["cif", "pdb", "both"])
     ap.add_argument("--out", default=layout.RAW)
     ap.add_argument("--check-updates", action="store_true", help="refetch entries revised since caching")
+    result.add_full_flag(ap)
     a = ap.parse_args(argv)
 
     try:
@@ -160,12 +161,10 @@ def main(argv: list[str] | None = None) -> int:
         else:
             ids = search(a.query, a.max)
     except HTTPError as e:
-        print(json.dumps({"ok": False, "error": str(e)}))
-        return 1
+        return result.finish(result.fail(e.code, str(e)))
     bad = [i for i in ids if not ID_RE.match(i)]
     if bad:
-        print(json.dumps({"ok": False, "error": f"not PDB IDs: {bad}"}))
-        return 1
+        return result.finish(result.fail("fetch_bad_id", f"not PDB IDs: {bad}"))
     cache = Cache(a.batch_dir / a.out)
     done, failed = [], []
     for pid in dict.fromkeys(ids):
@@ -176,7 +175,9 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 done.append(r)
         except HTTPError as e:
-            failed.append({"id": pid, "error": "not found / obsolete" if e.status == 404 else str(e)})
+            failed.append(
+                {"id": pid, "code": result.code_of(e), "error": "not found / obsolete" if e.status == 404 else str(e)}
+            )
     summary = {
         "ok": not failed,
         "query": a.query or a.uniprot,
@@ -187,8 +188,7 @@ def main(argv: list[str] | None = None) -> int:
             for s in ("downloaded", "cached", "repaired", "updated")
         },
     }
-    print(json.dumps(summary))
-    return 0 if not failed else 1
+    return result.finish(summary, command="fetch", out_dir=a.batch_dir / layout.CONFIG, full=a.full)
 
 
 if __name__ == "__main__":

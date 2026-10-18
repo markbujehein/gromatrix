@@ -14,12 +14,15 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from . import layout
+from .result import CodedError
 
 LOCK_NAME = layout.LOCK
 
 
-class ForcefieldMismatch(RuntimeError):
+class ForcefieldMismatch(CodedError):
     """Raised when a batch would mix forcefields."""
+
+    code = "ff_mismatch"
 
 
 @dataclass(frozen=True)
